@@ -7,9 +7,8 @@
 #include "threads/interrupt.h"
 #include "threads/synch.h"
 #include "threads/thread.h"
-  
-/* See [8254] for hardware details of the 8254 timer chip. */
 
+/* See [8254] for hardware details of the 8254 timer chip. */
 #if TIMER_FREQ < 19
 #error 8254 timer requires TIMER_FREQ >= 19
 #endif
@@ -24,11 +23,16 @@ static int64_t ticks;
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
 
+/* Maintains a sorted list of thread_sleep, ordered by the time until the thread wakes*/
+struct list thread_sleep_list;
+
 static intr_handler_func timer_interrupt;
 static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
+static void timer_wake (void);
+static bool sleep_time_cmp (const struct list_elem *p, const struct list_elem *q, void *aux) UNUSED;
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -37,6 +41,8 @@ timer_init (void)
 {
   pit_configure_channel (0, 2, TIMER_FREQ);
   intr_register_ext (0x20, timer_interrupt, "8254 Timer");
+
+  list_init(&thread_sleep_list);
 }
 
 /* Calibrates loops_per_tick, used to implement brief delays. */
@@ -84,16 +90,51 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
+/* Returns true if wake up time of a is earlier than that of b */
+static bool
+sleep_time_cmp (const struct list_elem *p, const struct list_elem *q, void *aux UNUSED)
+{
+  struct thread_sleep *p_sleep_elem = list_entry(p, struct thread_sleep, elem);
+  struct thread_sleep *q_sleep_elem = list_entry(q, struct thread_sleep, elem);
+  return p_sleep_elem->sleep_until < q_sleep_elem->sleep_until;
+}
+
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void
-timer_sleep (int64_t ticks) 
-{
-  int64_t start = timer_ticks ();
+timer_sleep (int64_t sleep_for) 
+{ 
+  if (sleep_for <= 0 )
+    return;
 
   ASSERT (intr_get_level () == INTR_ON);
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+
+  struct thread_sleep to_sleep;
+  to_sleep.sleep_until = sleep_for + ticks;
+  sema_init(&to_sleep.sema, 0);
+
+  enum intr_level old_level = intr_disable();
+  list_insert_ordered(&thread_sleep_list, &to_sleep.elem, sleep_time_cmp, NULL);
+  sema_down(&to_sleep.sema);
+  intr_set_level(old_level);
+}
+
+/* Wake up sleeping threads that are have suspending for a designated time.*/
+void
+timer_wake (void) 
+{
+  while (!list_empty(&thread_sleep_list))
+  {
+    struct thread_sleep *curr = list_entry(list_front(&thread_sleep_list), struct thread_sleep, elem);
+    if (curr->sleep_until == ticks) 
+    {
+      sema_up(&(curr->sema));
+      list_pop_front(&thread_sleep_list);
+    } else
+    {
+      break;
+    }   
+  }
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -165,12 +206,13 @@ timer_print_stats (void)
 {
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+  timer_wake ();
   thread_tick ();
 }
 
@@ -217,6 +259,7 @@ real_time_sleep (int64_t num, int32_t denom)
      ---------------------- = NUM * TIMER_FREQ / DENOM ticks. 
      1 s / TIMER_FREQ ticks
   */
+
   int64_t ticks = num * TIMER_FREQ / denom;
 
   ASSERT (intr_get_level () == INTR_ON);
@@ -224,7 +267,7 @@ real_time_sleep (int64_t num, int32_t denom)
     {
       /* We're waiting for at least one full timer tick.  Use
          timer_sleep() because it will yield the CPU to other
-         processes. */                
+         processes. */               
       timer_sleep (ticks); 
     }
   else 
