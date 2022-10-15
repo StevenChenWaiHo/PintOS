@@ -74,7 +74,7 @@ static tid_t allocate_tid (void);
 static int thread_compute_priority(struct thread *thread){
   int dp = 0;
   int bp = thread->base_priority;
-  if (list_empty(&thread->donation_list))
+  if (!list_empty(&thread->donation_list))
   {
     dp = list_entry(list_front(&thread->donation_list),
                     struct donation_list_elem, elem)
@@ -210,7 +210,7 @@ thread_create (const char *name, int priority,
     return TID_ERROR;
 
   /* Initialize thread. */
-  init_thread (t, name, priority);
+  init_thread(t, name, priority);
   tid = t->tid = allocate_tid ();
 
   /* Prepare thread for first run by initializing its stack.
@@ -496,7 +496,6 @@ init_thread (struct thread *t, const char *name, int priority)
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
-  list_init(&t->donation_list);
 
   memset (t, 0, sizeof *t);
   t->status = THREAD_BLOCKED;
@@ -507,7 +506,10 @@ init_thread (struct thread *t, const char *name, int priority)
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
+  list_init(&t->donation_list);
   intr_set_level (old_level);
+
+  
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
