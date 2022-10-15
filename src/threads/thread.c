@@ -72,21 +72,29 @@ void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
 static int thread_compute_priority(struct thread *thread){
-    int dp = list_entry(list_front(&(thread->donation_list)),
-      struct donation_list_elem, elem)->donated_priority;
-    int bp = thread_get_priority();
-    return bp > dp ? bp : dp;
-}
+  int dp = 0;
+  int bp = thread->base_priority;
+  if (!list_empty(&thread->donation_list))
+  {
+    printf("hi2 \n");
+
+    dp = list_entry(list_front(&thread->donation_list),
+                    struct donation_list_elem, elem)
+             ->donated_priority;
+    printf("hi3 \n");
+  }
+  return bp > dp ? bp : dp;
+  }
 
 static int64_t thread_get_wake_tick(struct thread *thread) {
   return thread->last_wake;
 }
 
-static bool priority_sort(const struct list_elem *a, const struct list_elem *b, void *aux){
+static bool priority_sort(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
   struct thread *a_thread = list_entry(a, struct thread, elem);
   struct thread *b_thread = list_entry(b, struct thread, elem);
-  return (thread_compute_priority(a) <= thread_compute_priority(b))
-    && (thread_get_wake_tick(a) <= thread_get_wake_tick(b));
+  printf("hi\n");
+  return (thread_compute_priority(a_thread) <= thread_compute_priority(b_thread)) && (thread_get_wake_tick(a_thread) <= thread_get_wake_tick(b_thread));
 }
 
 /* Initializes the threading system by transforming the code
@@ -271,7 +279,8 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  // list_push_back (&ready_list, &t->elem);
+  list_insert_ordered(&ready_list, &t->elem, priority_sort, NULL);
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -342,7 +351,8 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+    // list_push_back (&ready_list, &cur->elem);
+    list_insert_ordered(&ready_list, &cur->elem, priority_sort, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -490,6 +500,7 @@ init_thread (struct thread *t, const char *name, int priority)
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
+  list_init(&t->donation_list);
 
   memset (t, 0, sizeof *t);
   t->status = THREAD_BLOCKED;

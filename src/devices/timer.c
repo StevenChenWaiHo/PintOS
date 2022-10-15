@@ -120,7 +120,7 @@ timer_sleep (int64_t sleep_for)
 }
 
 /* Wake up sleeping threads that are have suspending for a designated time.*/
-void
+static void
 timer_wake (void) 
 {
   while (!list_empty(&thread_sleep_list))
