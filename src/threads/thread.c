@@ -74,14 +74,11 @@ static tid_t allocate_tid (void);
 static int thread_compute_priority(struct thread *thread){
   int dp = 0;
   int bp = thread->base_priority;
-  if (!list_empty(&thread->donation_list))
+  if (list_empty(&thread->donation_list))
   {
-    printf("hi2 \n");
-
     dp = list_entry(list_front(&thread->donation_list),
                     struct donation_list_elem, elem)
              ->donated_priority;
-    printf("hi3 \n");
   }
   return bp > dp ? bp : dp;
   }
@@ -93,7 +90,6 @@ static int64_t thread_get_wake_tick(struct thread *thread) {
 static bool priority_sort(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
   struct thread *a_thread = list_entry(a, struct thread, elem);
   struct thread *b_thread = list_entry(b, struct thread, elem);
-  printf("hi\n");
   return (thread_compute_priority(a_thread) <= thread_compute_priority(b_thread)) && (thread_get_wake_tick(a_thread) <= thread_get_wake_tick(b_thread));
 }
 
