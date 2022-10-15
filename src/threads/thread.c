@@ -8,6 +8,7 @@
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
 #include "threads/palloc.h"
+#include "devices/timer.h"
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
@@ -90,7 +91,7 @@ static int64_t thread_get_wake_tick(struct thread *thread) {
 static bool priority_sort(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
   struct thread *a_thread = list_entry(a, struct thread, elem);
   struct thread *b_thread = list_entry(b, struct thread, elem);
-  return (thread_compute_priority(a_thread) <= thread_compute_priority(b_thread)) && (thread_get_wake_tick(a_thread) <= thread_get_wake_tick(b_thread));
+  return (thread_compute_priority(a_thread) < thread_compute_priority(b_thread)) || ((thread_compute_priority(a_thread) == thread_compute_priority(b_thread)) && (thread_get_wake_tick(a_thread) <= thread_get_wake_tick(b_thread)));
 }
 
 /* Initializes the threading system by transforming the code
@@ -278,7 +279,7 @@ thread_unblock (struct thread *t)
   // list_push_back (&ready_list, &t->elem);
   list_insert_ordered(&ready_list, &t->elem, priority_sort, NULL);
   t->status = THREAD_READY;
-  intr_set_level (old_level);
+  intr_set_level(old_level);
 }
 
 /* Returns the name of the running thread. */
@@ -606,6 +607,8 @@ schedule (void)
   if (cur != next)
     prev = switch_threads (cur, next);
   thread_schedule_tail (prev);
+  printf("%lld", timer_ticks());
+  cur->last_wake = timer_ticks();
 }
 
 /* Returns a tid to use for a new thread. */
