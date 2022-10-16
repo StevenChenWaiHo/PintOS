@@ -17,12 +17,14 @@ void
 test_alarm_priority (void) 
 {
   int i;
-  
+
   /* This test does not work with the MLFQS. */
   ASSERT (!thread_mlfqs);
 
+
   wake_time = timer_ticks () + 5 * TIMER_FREQ;
   sema_init (&wait_sema, 0);
+
   
   for (i = 0; i < 10; i++) 
     {
@@ -43,7 +45,7 @@ alarm_priority_thread (void *aux UNUSED)
 {
   /* Busy-wait until the current time changes. */
   int64_t start_time = timer_ticks ();
-  while (timer_elapsed (start_time) == 0)
+  while (timer_elapsed(start_time) == 0)
     continue;
 
   /* Now we know we're at the very beginning of a timer tick, so
