@@ -81,6 +81,7 @@ static int thread_compute_priority(struct thread *thread){
                     struct donation_list_elem, elem)
              ->donated_priority;
   }
+
   return bp > dp ? bp : dp;
   }
 
@@ -91,7 +92,8 @@ static int64_t thread_get_wake_tick(struct thread *thread) {
 static bool priority_sort(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
   struct thread *a_thread = list_entry(a, struct thread, elem);
   struct thread *b_thread = list_entry(b, struct thread, elem);
-  return (thread_compute_priority(a_thread) < thread_compute_priority(b_thread)) || ((thread_compute_priority(a_thread) == thread_compute_priority(b_thread)) && (thread_get_wake_tick(a_thread) <= thread_get_wake_tick(b_thread)));
+
+  return (thread_compute_priority(a_thread) > thread_compute_priority(b_thread)) || ((thread_compute_priority(a_thread) == thread_compute_priority(b_thread)) && (thread_get_wake_tick(a_thread) < thread_get_wake_tick(b_thread)));
 }
 
 /* Initializes the threading system by transforming the code
@@ -238,6 +240,7 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+  thread_yield();
   //perform check to see if current created thread should be prioritized,
   //if yes yield current thread and schedule the newly created thread (or any thread that has the same priority).
   return tid;
@@ -341,7 +344,7 @@ thread_exit (void)
 void
 thread_yield (void) 
 {
-  struct thread *cur = thread_current ();
+  struct thread *cur = thread_current();
   enum intr_level old_level;
   
   ASSERT (!intr_context ());
@@ -377,6 +380,7 @@ void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->base_priority = new_priority;
+  thread_yield();
 }
 
 /* Returns the current thread's priority. */
@@ -607,7 +611,6 @@ schedule (void)
   if (cur != next)
     prev = switch_threads (cur, next);
   thread_schedule_tail (prev);
-  printf("%lld", timer_ticks());
   cur->last_wake = timer_ticks();
 }
 
