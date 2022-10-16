@@ -74,7 +74,7 @@ static tid_t allocate_tid (void);
 
 /* NEW: Compare the base_priority of a thread and the highest donated_priority
 and return the max priority.  */
-static int 
+int 
 thread_compute_priority(struct thread *thread)
 {
   int dp = 0;
@@ -103,8 +103,15 @@ priority_sort(const struct list_elem *a, const struct list_elem *b, void *aux UN
   struct thread *b_thread = list_entry(b, struct thread, elem);
 
   return (thread_compute_priority(a_thread) > thread_compute_priority(b_thread))
-   || ((thread_compute_priority(a_thread) == thread_compute_priority(b_thread))
-    && (thread_get_wake_tick(a_thread) < thread_get_wake_tick(b_thread)));
+    || ((thread_compute_priority(a_thread) == thread_compute_priority(b_thread))
+      && (thread_get_wake_tick(a_thread) < thread_get_wake_tick(b_thread)));
+}
+
+/* NEW: Comparator for donation_list. Simply comparing the values of two priorities.*/
+bool
+priority_level_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+  return list_entry(a, struct donation_list_elem, elem)->donated_priority
+    < list_entry(b, struct donation_list_elem, elem)->donated_priority;
 }
 
 /* Initializes the threading system by transforming the code
@@ -398,6 +405,9 @@ thread_set_priority (int new_priority)
   thread_current ()->base_priority = new_priority;
   /* NEW: Thread yield when priority is set to check if the current thread needs
   to be scheduled. */
+  //if (new_priority <= thread_compute_priority(list_entry(list_front(&ready_list), struct thread, elem))) {
+  //  thread_yield();
+  //}
   thread_yield();
 }
 
@@ -406,6 +416,14 @@ int
 thread_get_priority (void) 
 {
   return thread_compute_priority(thread_current ());
+}
+
+/* NEW: Donating the donor's priority to the receiver. */
+void thread_donate_priority(struct thread *donor, struct thread *receiver, struct lock *l) {
+  struct donation_list_elem donation;
+  donation.donated_priority = thread_compute_priority(donor);
+  donation.l = l;
+  list_insert_ordered(&receiver->donation_list, &donation.elem, priority_level_less, NULL);
 }
 
 /* Sets the current thread's nice value to NICE. */
