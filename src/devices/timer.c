@@ -213,6 +213,7 @@ timer_print_stats (void)
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
+  ASSERT(intr_get_level() == INTR_OFF);
   ticks++;
   timer_wake ();
   thread_tick ();
