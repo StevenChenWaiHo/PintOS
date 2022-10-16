@@ -72,7 +72,11 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
-static int thread_compute_priority(struct thread *thread){
+/* NEW: Compare the base_priority of a thread and the highest donated_priority
+and return the max priority.  */
+static int 
+thread_compute_priority(struct thread *thread)
+{
   int dp = 0;
   int bp = thread->base_priority;
   if (!list_empty(&thread->donation_list))
@@ -83,17 +87,24 @@ static int thread_compute_priority(struct thread *thread){
   }
 
   return bp > dp ? bp : dp;
-  }
+}
 
+/* NEW: Return the last wake tick of a thread. */
 static int64_t thread_get_wake_tick(struct thread *thread) {
   return thread->last_wake;
 }
 
-static bool priority_sort(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED){
+/* NEW: Comparator for ready_list, keeping the oldest and highest priority 
+thread at the front of the list. */
+bool 
+priority_sort(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
   struct thread *a_thread = list_entry(a, struct thread, elem);
   struct thread *b_thread = list_entry(b, struct thread, elem);
 
-  return (thread_compute_priority(a_thread) > thread_compute_priority(b_thread)) || ((thread_compute_priority(a_thread) == thread_compute_priority(b_thread)) && (thread_get_wake_tick(a_thread) < thread_get_wake_tick(b_thread)));
+  return (thread_compute_priority(a_thread) > thread_compute_priority(b_thread))
+   || ((thread_compute_priority(a_thread) == thread_compute_priority(b_thread))
+    && (thread_get_wake_tick(a_thread) < thread_get_wake_tick(b_thread)));
 }
 
 /* Initializes the threading system by transforming the code
@@ -240,9 +251,11 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
+  
+  /* NEW: Perform check to see if current created thread should be prioritized,
+  if yes yield current thread and schedule the newly created thread (or any 
+  thread that has the same priority). */
   thread_yield();
-  //perform check to see if current created thread should be prioritized,
-  //if yes yield current thread and schedule the newly created thread (or any thread that has the same priority).
   return tid;
 }
 
@@ -279,7 +292,8 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  // list_push_back (&ready_list, &t->elem);
+  /* NEW: Add thread to the priority-sorted list. 
+  ORIGINAL: list_push_back (&ready_list, &t->elem); */
   list_insert_ordered(&ready_list, &t->elem, priority_sort, NULL);
   t->status = THREAD_READY;
   intr_set_level(old_level);
@@ -351,7 +365,8 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    // list_push_back (&ready_list, &cur->elem);
+  /* NEW: Add thread to the priority-sorted list. 
+  ORIGINAL: list_push_back (&ready_list, &cur->elem); */
     list_insert_ordered(&ready_list, &cur->elem, priority_sort, NULL);
   cur->status = THREAD_READY;
   schedule ();
@@ -379,7 +394,10 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
+  /* NEW: priority renamed base_priority. */
   thread_current ()->base_priority = new_priority;
+  /* NEW: Thread yield when priority is set to check if the current thread needs
+  to be scheduled. */
   thread_yield();
 }
 

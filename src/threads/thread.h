@@ -147,4 +147,8 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
+/* NEW: priority sort for sorting a list. */
+bool priority_sort(const struct list_elem *a, const struct list_elem *b, 
+void *aux UNUSED);
+
 #endif /* threads/thread.h */

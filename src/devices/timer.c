@@ -126,11 +126,13 @@ timer_wake (void)
   while (!list_empty(&thread_sleep_list))
   {
     struct thread_sleep *curr = list_entry(list_front(&thread_sleep_list), struct thread_sleep, elem);
-    if (curr->sleep_until == ticks) 
+    // NEW: Should be less than to account for threads that missed wake tick
+    if (curr->sleep_until <= ticks) 
     {
       sema_up(&(curr->sema));
       list_pop_front(&thread_sleep_list);
-    } else
+    }
+    else
     {
       break;
     }   
