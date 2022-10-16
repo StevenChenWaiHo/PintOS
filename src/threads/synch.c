@@ -32,6 +32,28 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+/* NEW: Comparator for waiters list in conditional variable. */
+static bool
+cond_priority_sort(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  struct semaphore_elem *a_sema = list_entry(a, struct semaphore_elem, elem);
+  struct semaphore_elem *b_sema = list_entry(b, struct semaphore_elem, elem);
+  struct list a_waitlist = a_sema->semaphore.waiters;
+  struct list b_waitlist = b_sema->semaphore.waiters;
+  if(list_empty(&b_waitlist)){
+    return true;
+  } else if(list_empty(&a_waitlist)){
+    return false;
+  }
+  else{
+    printf("Priority: %d ", is_thread(list_entry(list_front(&a_waitlist), struct thread, elem)));
+    bool foo = priority_sort(list_front(&a_waitlist), list_front(&b_waitlist), NULL);
+    printf("%d", foo);
+    return foo;
+  }
+  
+}
+
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
    manipulating it:
@@ -258,13 +280,6 @@ lock_held_by_current_thread (const struct lock *lock)
   return lock->holder == thread_current ();
 }
 
-/* One semaphore in a list. */
-struct semaphore_elem 
-  {
-    struct list_elem elem;              /* List element. */
-    struct semaphore semaphore;         /* This semaphore. */
-  };
-
 /* Initializes condition variable COND.  A condition variable
    allows one piece of code to signal a condition and cooperating
    code to receive the signal and act upon it. */
@@ -307,9 +322,9 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   
   sema_init (&waiter.semaphore, 0);
-  /* NEW: Add thread to the priority-sorted list. 
-    ORIGINAL: list_push_back (&cond->waiters, &waiter.elem);*/
-  list_insert_ordered (&cond->waiters, &waiter.elem, priority_sort, NULL);
+  /* NEW: Add semaphore to the condvar wait list in order
+  ORIGINAL: list_push_back (&cond->waiters, &waiter.elem);*/
+  list_insert_ordered (&cond->waiters, &waiter.elem, cond_priority_sort, NULL);
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);

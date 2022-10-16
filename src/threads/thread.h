@@ -146,7 +146,8 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
-
+// TODO: delete this
+bool is_thread(struct thread *t);
 /* NEW: priority sort for sorting a list. */
 bool priority_sort(const struct list_elem *a, const struct list_elem *b, 
 void *aux UNUSED);
