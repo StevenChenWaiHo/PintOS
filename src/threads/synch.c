@@ -244,6 +244,7 @@ lock_release (struct lock *lock)
   sema_up (&lock->semaphore);
 }
 
+
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds
    a lock would be racy.) */
