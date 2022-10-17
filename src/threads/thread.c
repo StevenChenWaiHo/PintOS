@@ -387,9 +387,7 @@ thread_yield (void)
       intr_yield_on_return();
     else
       thread_yield();
-  }
-  
-    
+  }   
   }
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
