@@ -8,6 +8,7 @@
 #include "threads/interrupt.h"
 #include "threads/intr-stubs.h"
 #include "threads/palloc.h"
+#include "devices/timer.h"
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
@@ -70,6 +71,41 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+
+/* NEW: Compare the base_priority of a thread and the highest donated_priority
+and return the max priority.  */
+int 
+thread_compute_priority(struct thread *thread)
+{
+  int dp = 0;
+  int bp = thread->base_priority;
+  if (!list_empty(&thread->donation_list))
+  {
+    dp = list_entry(list_front(&thread->donation_list),
+                    struct donation_list_elem, elem)
+             ->donated_priority;
+  }
+
+  return bp > dp ? bp : dp;
+}
+
+/* NEW: Return the last wake tick of a thread. */
+static int64_t thread_get_wake_tick(struct thread *thread) {
+  return thread->last_wake;
+}
+
+/* NEW: Comparator for ready_list, keeping the oldest and highest priority 
+thread at the front of the list. */
+bool 
+priority_sort(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  struct thread *a_thread = list_entry(a, struct thread, elem);
+  struct thread *b_thread = list_entry(b, struct thread, elem);
+
+  return (thread_compute_priority(a_thread) > thread_compute_priority(b_thread))
+   || ((thread_compute_priority(a_thread) == thread_compute_priority(b_thread))
+    && (thread_get_wake_tick(a_thread) < thread_get_wake_tick(b_thread)));
+}
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -188,7 +224,7 @@ thread_create (const char *name, int priority,
     return TID_ERROR;
 
   /* Initialize thread. */
-  init_thread (t, name, priority);
+  init_thread(t, name, priority);
   tid = t->tid = allocate_tid ();
 
   /* Prepare thread for first run by initializing its stack.
@@ -215,7 +251,11 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-
+  
+  /* NEW: Perform check to see if current created thread should be prioritized,
+  if yes yield current thread and schedule the newly created thread (or any 
+  thread that has the same priority). */
+  thread_yield();
   return tid;
 }
 
@@ -252,9 +292,11 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  /* NEW: Add thread to the priority-sorted list. 
+  ORIGINAL: list_push_back (&ready_list, &t->elem); */
+  list_insert_ordered(&ready_list, &t->elem, priority_sort, NULL);
   t->status = THREAD_READY;
-  intr_set_level (old_level);
+  intr_set_level(old_level);
 }
 
 /* Returns the name of the running thread. */
@@ -316,14 +358,16 @@ thread_exit (void)
 void
 thread_yield (void) 
 {
-  struct thread *cur = thread_current ();
+  struct thread *cur = thread_current();
   enum intr_level old_level;
   
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
   if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+  /* NEW: Add thread to the priority-sorted list. 
+  ORIGINAL: list_push_back (&ready_list, &cur->elem); */
+    list_insert_ordered(&ready_list, &cur->elem, priority_sort, NULL);
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -350,14 +394,18 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  thread_current ()->priority = new_priority;
+  /* NEW: priority renamed base_priority. */
+  thread_current ()->base_priority = new_priority;
+  /* NEW: Thread yield when priority is set to check if the current thread needs
+  to be scheduled. */
+  thread_yield();
 }
 
 /* Returns the current thread's priority. */
 int
 thread_get_priority (void) 
 {
-  return thread_current ()->priority;
+  return thread_compute_priority(thread_current ());
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -476,12 +524,15 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
-  t->priority = priority;
+  t->base_priority = priority;
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
+  list_init(&t->donation_list);
   intr_set_level (old_level);
+
+  
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -578,6 +629,7 @@ schedule (void)
   if (cur != next)
     prev = switch_threads (cur, next);
   thread_schedule_tail (prev);
+  cur->last_wake = timer_ticks();
 }
 
 /* Returns a tid to use for a new thread. */

@@ -68,11 +68,15 @@ sema_down (struct semaphore *sema)
   old_level = intr_disable ();
   while (sema->value == 0) 
     {
-      list_push_back (&sema->waiters, &thread_current ()->elem);
+      /* NEW: Add thread to the priority-sorted list. 
+      ORIGINAL: list_push_back (&sema->waiters, &thread_current ()->elem); */
+      list_insert_ordered (&sema->waiters, &thread_current ()->elem, 
+      priority_sort, NULL);
       thread_block ();
     }
   sema->value--;
   intr_set_level (old_level);
+  
 }
 
 /* Down or "P" operation on a semaphore, but only if the
@@ -117,10 +121,18 @@ sema_up (struct semaphore *sema)
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
   sema->value++;
-  intr_set_level (old_level);
+  intr_set_level(old_level);
+  /* QUESTION: Should yield be after/before the interrupt signal off it doesnt work
+  if it is in the signal off but will it cause issue? 
+  NEW: Thread yield after the thread is unblocked. */
+  if (intr_context())
+    intr_yield_on_return();
+  else
+    thread_yield();
 }
 
 static void sema_test_helper (void *sema_);
+
 
 /* Self-test for semaphores that makes control "ping-pong"
    between a pair of threads.  Insert calls to printf() to see
@@ -235,6 +247,7 @@ lock_release (struct lock *lock)
   sema_up (&lock->semaphore);
 }
 
+
 /* Returns true if the current thread holds LOCK, false
    otherwise.  (Note that testing whether some other thread holds
    a lock would be racy.) */
@@ -251,7 +264,16 @@ struct semaphore_elem
   {
     struct list_elem elem;              /* List element. */
     struct semaphore semaphore;         /* This semaphore. */
+    struct thread *sema_thread;
   };
+
+  static bool
+  cond_priority_sort (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) 
+  {
+    struct thread *a_thread = list_entry(a, struct semaphore_elem, elem)->sema_thread;
+    struct thread *b_thread = list_entry(b, struct semaphore_elem, elem)->sema_thread;
+    return thread_compute_priority(a_thread) > thread_compute_priority(b_thread);
+  }
 
 /* Initializes condition variable COND.  A condition variable
    allows one piece of code to signal a condition and cooperating
@@ -295,7 +317,8 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   
   sema_init (&waiter.semaphore, 0);
-  list_push_back (&cond->waiters, &waiter.elem);
+  waiter.sema_thread = thread_current();
+  list_insert_ordered (&cond->waiters, &waiter.elem, cond_priority_sort, NULL);
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);
