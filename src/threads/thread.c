@@ -74,7 +74,7 @@ static tid_t allocate_tid (void);
 
 /* NEW: Compare the base_priority of a thread and the highest donated_priority
 and return the max priority.  */
-static int 
+int 
 thread_compute_priority(struct thread *thread)
 {
   int dp = 0;
