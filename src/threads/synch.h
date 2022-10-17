@@ -11,6 +11,7 @@ struct semaphore
     struct list waiters;        /* List of waiting threads. */
   };
 
+/* TODO: Set the struct to private*/
 /* One semaphore in a list. */
 struct semaphore_elem 
   {
