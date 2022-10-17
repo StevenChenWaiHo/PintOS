@@ -121,14 +121,15 @@ sema_up (struct semaphore *sema)
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
   sema->value++;
-  intr_set_level(old_level);
-  /* QUESTION: Should yield be after/before the interrupt signal off it doesnt work
-  if it is in the signal off but will it cause issue? 
-  NEW: Thread yield after the thread is unblocked. */
   if (intr_context())
     intr_yield_on_return();
   else
     thread_yield();
+  intr_set_level(old_level);
+  /* QUESTION: Should yield be after/before the interrupt signal off it doesnt work
+  if it is in the signal off but will it cause issue? 
+  NEW: Thread yield after the thread is unblocked. */
+  
 }
 
 static void sema_test_helper (void *sema_);
