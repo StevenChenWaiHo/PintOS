@@ -267,12 +267,12 @@ struct semaphore_elem
     struct thread *sema_thread;
   };
 
-  static bool
+  bool
   cond_priority_sort (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) 
   {
-    int a_priority = list_entry(a, struct semaphore_elem, elem)->sema_thread->base_priority;
-    int b_priority = list_entry(b, struct semaphore_elem, elem)->sema_thread->base_priority;
-    return a_priority > b_priority;
+    struct thread *a_thread = list_entry(a, struct semaphore_elem, elem)->sema_thread;
+    struct thread *b_thread = list_entry(b, struct semaphore_elem, elem)->sema_thread;
+    return a_thread->base_priority > b_thread->base_priority;
   }
 
 /* Initializes condition variable COND.  A condition variable

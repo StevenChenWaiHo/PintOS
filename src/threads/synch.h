@@ -36,6 +36,7 @@ struct condition
     struct list waiters;        /* List of waiting semaphore_elems. */
   };
 
+bool cond_priority_sort (const struct list_elem *, const struct list_elem *, void *aux);
 void cond_init (struct condition *);
 void cond_wait (struct condition *, struct lock *);
 void cond_signal (struct condition *, struct lock *);
