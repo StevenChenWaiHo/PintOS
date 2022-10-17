@@ -125,10 +125,7 @@ sema_up (struct semaphore *sema)
   /* QUESTION: Should yield be after/before the interrupt signal off it doesnt work
   if it is in the signal off but will it cause issue? 
   NEW: Thread yield after the thread is unblocked. */
-  if (intr_context())
-    intr_yield_on_return();
-  else
-    thread_yield();
+  
 }
 
 static void sema_test_helper (void *sema_);

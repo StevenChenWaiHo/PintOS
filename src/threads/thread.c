@@ -255,7 +255,7 @@ thread_create (const char *name, int priority,
   /* NEW: Perform check to see if current created thread should be prioritized,
   if yes yield current thread and schedule the newly created thread (or any 
   thread that has the same priority). */
-  thread_yield();
+  thread_priority_yield();
   return tid;
 }
 
@@ -373,6 +373,25 @@ thread_yield (void)
   intr_set_level (old_level);
 }
 
+/* NEW: Yield the CPU only if the priority of the current thread is lower than
+ the thread at the front of the ready list. Also use intr_yield_on_return for
+ external interrupts. */
+ void
+ thread_priority_yield(void)
+ {
+  if (!list_empty(&ready_list) && thread_compute_priority(thread_current()) 
+  <= thread_compute_priority(list_entry(list_front(&ready_list), struct thread
+  , elem)))
+  {
+    if (intr_context())
+      intr_yield_on_return();
+    else
+      thread_yield();
+  }
+  
+    
+  }
+
 /* Invoke function 'func' on all threads, passing along 'aux'.
    This function must be called with interrupts off. */
 void
@@ -398,7 +417,7 @@ thread_set_priority (int new_priority)
   thread_current ()->base_priority = new_priority;
   /* NEW: Thread yield when priority is set to check if the current thread needs
   to be scheduled. */
-  thread_yield();
+  thread_priority_yield();
 }
 
 /* Returns the current thread's priority. */
