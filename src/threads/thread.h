@@ -104,6 +104,8 @@ struct thread
     unsigned magic;                     /* Detects stack overflow. */
   };
 
+/* NEW: Donation list element struct.
+   Contains the donated priority and the lock. */
 struct donation_list_elem {
    int donated_priority;
    struct list_elem elem;

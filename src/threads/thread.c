@@ -111,7 +111,7 @@ priority_sort(const struct list_elem *a, const struct list_elem *b, void *aux UN
 bool
 priority_level_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
   return list_entry(a, struct donation_list_elem, elem)->donated_priority
-    < list_entry(b, struct donation_list_elem, elem)->donated_priority;
+    > list_entry(b, struct donation_list_elem, elem)->donated_priority;
 }
 
 /* Initializes the threading system by transforming the code
