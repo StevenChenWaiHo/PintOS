@@ -107,12 +107,14 @@ priority_sort(const struct list_elem *a, const struct list_elem *b, void *aux UN
       && (thread_get_wake_tick(a_thread) < thread_get_wake_tick(b_thread)));
 }
 
-/* NEW: Comparator for donation_list. Simply comparing the values of two priorities.*/
+/* NEW: Comparator for donation_list. Simply comparing the values of two priorities. */
 bool
 priority_level_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
   return list_entry(a, struct donation_list_elem, elem)->donated_priority
     > list_entry(b, struct donation_list_elem, elem)->donated_priority;
 }
+
+
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
