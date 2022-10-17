@@ -134,7 +134,6 @@ const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
-
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
@@ -147,9 +146,13 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-/* NEW: priority sort for sorting list with threads. */
+int thread_compute_priority(struct thread *);
+/* NEW: Priority sort for sorting a list. */
 bool priority_sort(const struct list_elem *a, const struct list_elem *b, 
 void *aux UNUSED);
+/* NEW: Yield that accounts for priority and external interrupt*/
+void thread_priority_yield(void);
+
 
 /* NEW: priority sort for sorting list with donation priorities.*/
 bool priority_level_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);

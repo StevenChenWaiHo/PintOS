@@ -121,14 +121,11 @@ sema_up (struct semaphore *sema)
     thread_unblock (list_entry (list_pop_front (&sema->waiters),
                                 struct thread, elem));
   sema->value++;
-  intr_set_level(old_level);
   /* QUESTION: Should yield be after/before the interrupt signal off it doesnt work
   if it is in the signal off but will it cause issue? 
   NEW: Thread yield after the thread is unblocked. */
-  if (intr_context())
-    intr_yield_on_return();
-  else
-    thread_yield();
+  thread_priority_yield();
+  intr_set_level(old_level);
 }
 
 static void sema_test_helper (void *sema_);
@@ -272,9 +269,9 @@ struct semaphore_elem
   static bool
   cond_priority_sort (const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) 
   {
-    int a_priority = list_entry(a, struct semaphore_elem, elem)->sema_thread->base_priority;
-    int b_priority = list_entry(b, struct semaphore_elem, elem)->sema_thread->base_priority;
-    return a_priority > b_priority;
+    struct thread *a_thread = list_entry(a, struct semaphore_elem, elem)->sema_thread;
+    struct thread *b_thread = list_entry(b, struct semaphore_elem, elem)->sema_thread;
+    return thread_compute_priority(a_thread) > thread_compute_priority(b_thread);
   }
 
 /* Initializes condition variable COND.  A condition variable
