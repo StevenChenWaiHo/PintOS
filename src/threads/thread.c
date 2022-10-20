@@ -79,13 +79,14 @@ thread_compute_priority(struct thread *thread)
 {
   int dp = 0;
   int bp = thread->base_priority;
+  enum intr_level old_level = intr_disable();
   if (!list_empty(&thread->donation_list))
   {
     dp = list_entry(list_front(&thread->donation_list),
                     struct donation_list_elem, elem)
              ->donated_priority;
   }
-
+  intr_set_level(old_level);
   return bp > dp ? bp : dp;
 }
 
@@ -376,6 +377,7 @@ thread_yield (void)
   if (cur != idle_thread) 
   /* NEW: Add thread to the priority-sorted list. 
   ORIGINAL: list_push_back (&ready_list, &cur->elem); */
+    ASSERT(cur->base_priority >= PRI_MIN && cur->base_priority <= PRI_MAX);
     list_insert_ordered(&ready_list, &cur->elem, priority_sort, NULL);
   cur->status = THREAD_READY;
   schedule ();
@@ -388,6 +390,7 @@ thread_yield (void)
  void
  thread_priority_yield(void)
  {
+  enum intr_level old_level = intr_disable ();
   if (!list_empty(&ready_list) && thread_compute_priority(thread_current()) 
   <= thread_compute_priority(list_entry(list_front(&ready_list), struct thread
   , elem)))
@@ -396,8 +399,9 @@ thread_yield (void)
       intr_yield_on_return();
     else
       thread_yield();
-  }   
   }
+  intr_set_level (old_level);
+}
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
    This function must be called with interrupts off. */
@@ -437,9 +441,11 @@ thread_get_priority (void)
 /* NEW: Donating the donor's priority to the receiver. */
 void thread_donate_priority(struct thread *donor, struct thread *receiver, struct lock *l) {
   struct donation_list_elem donation;
+  enum intr_level old_level = intr_disable ();
   donation.donated_priority = thread_compute_priority(donor);
-  donation.l = l;
+  donation.l = l ;
   list_insert_ordered(&receiver->donation_list, &donation.elem, priority_level_less, NULL);
+  intr_set_level (old_level);
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -661,6 +667,7 @@ schedule (void)
   ASSERT (is_thread (next));
 
   if (cur != next)
+    ASSERT (cur != next)
     prev = switch_threads (cur, next);
   thread_schedule_tail (prev);
   cur->last_wake = timer_ticks();
