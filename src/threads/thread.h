@@ -163,6 +163,9 @@ bool priority_level_less(const struct list_elem *a, const struct list_elem *b, v
 /* NEW: Computes the input thread's highest priority at the moment.*/
 int thread_compute_priority(struct thread *);
 
+/* NEW: Prints all donated priorities in donation_list. (debug) */
+void thread_show_priorities(struct thread *);
+
 /* NEW: Handles donation from donor to receiver.*/
 void thread_donate_priority(struct thread *, struct thread *, struct lock *);
 

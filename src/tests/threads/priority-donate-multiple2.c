@@ -44,18 +44,23 @@ test_priority_donate_multiple2 (void)
   thread_create ("a", PRI_DEFAULT + 3, a_thread_func, &a);
   msg ("Main thread should have priority %d.  Actual priority: %d.",
        PRI_DEFAULT + 3, thread_get_priority ());
+  thread_show_priorities(thread_current());
 
   thread_create ("c", PRI_DEFAULT + 1, c_thread_func, NULL);
 
   thread_create ("b", PRI_DEFAULT + 5, b_thread_func, &b);
   msg ("Main thread should have priority %d.  Actual priority: %d.",
        PRI_DEFAULT + 5, thread_get_priority ());
+  thread_show_priorities(thread_current());
 
   lock_release (&a);
+  thread_show_priorities(thread_current());
   msg ("Main thread should have priority %d.  Actual priority: %d.",
        PRI_DEFAULT + 5, thread_get_priority ());
 
+  thread_show_priorities(thread_current());
   lock_release (&b);
+  thread_show_priorities(thread_current());
   msg ("Threads b, a, c should have just finished, in that order.");
   msg ("Main thread should have priority %d.  Actual priority: %d.",
        PRI_DEFAULT, thread_get_priority ());

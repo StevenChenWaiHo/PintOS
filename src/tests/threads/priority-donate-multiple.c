@@ -43,12 +43,16 @@ test_priority_donate_multiple (void)
   msg ("Main thread should have priority %d.  Actual priority: %d.",
        PRI_DEFAULT + 2, thread_get_priority ());
 
+  thread_show_priorities(b.holder);
   lock_release (&b);
+  //thread_show_priorities(b.holder);
   msg ("Thread b should have just finished.");
   msg ("Main thread should have priority %d.  Actual priority: %d.",
        PRI_DEFAULT + 1, thread_get_priority ());
 
+  //thread_show_priorities(a.holder);
   lock_release (&a);
+  //thread_show_priorities(a.holder);
   msg ("Thread a should have just finished.");
   msg ("Main thread should have priority %d.  Actual priority: %d.",
        PRI_DEFAULT, thread_get_priority ());

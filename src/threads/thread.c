@@ -434,6 +434,24 @@ thread_get_priority (void)
   return thread_compute_priority(thread_current ());
 }
 
+/* NEW: Prints all donated priorities in donation_list. (debug) */
+void thread_show_priorities(struct thread *t) {
+  //printf("%d\n", list_entry(list_begin (&t->donation_list), struct donation_list_elem, elem)->donated_priority);
+    
+  struct list_elem *e;
+  for (e = list_begin (&t->donation_list);
+       e != list_end (&t->donation_list);
+       e = list_next (e))
+  {
+    if (e != list_end (&t->donation_list))
+    {
+      printf("go\n");
+    }
+    printf("%d\n", list_entry(e, struct donation_list_elem, elem)->donated_priority);
+  }
+  
+}
+
 /* NEW: Donating the donor's priority to the receiver. */
 void thread_donate_priority(struct thread *donor, struct thread *receiver, struct lock *l) {
   struct donation_list_elem donation;
