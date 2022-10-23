@@ -77,15 +77,15 @@ and return the max priority.  */
 int 
 thread_compute_priority(struct thread *thread)
 {
+  ASSERT (is_thread(thread));
   int dp = 0;
   int bp = thread->base_priority;
-  if (!list_empty(&thread->donation_list))
+  enum intr_level old_level = intr_disable();
+  if (!list_empty(&thread->donor_list))
   {
-    dp = list_entry(list_front(&thread->donation_list),
-                    struct donation_list_elem, elem)
-             ->donated_priority;
+    dp = list_entry(list_front(&thread->donor_list), struct thread, donorelem)->curr_priority;
   }
-
+  intr_set_level(old_level);
   return bp > dp ? bp : dp;
 }
 
@@ -102,16 +102,16 @@ priority_sort(const struct list_elem *a, const struct list_elem *b, void *aux UN
   struct thread *a_thread = list_entry(a, struct thread, elem);
   struct thread *b_thread = list_entry(b, struct thread, elem);
 
-  return (thread_compute_priority(a_thread) > thread_compute_priority(b_thread))
-    || ((thread_compute_priority(a_thread) == thread_compute_priority(b_thread))
-      && (thread_get_wake_tick(a_thread) < thread_get_wake_tick(b_thread)));
+  return (a_thread->curr_priority > b_thread->curr_priority
+    || ((a_thread->curr_priority == b_thread->curr_priority)
+      && (thread_get_wake_tick(a_thread) < thread_get_wake_tick(b_thread))));
 }
 
 /* NEW: Comparator for donation_list. Simply comparing the values of two priorities. */
 bool
 priority_level_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
-  return list_entry(a, struct donation_list_elem, elem)->donated_priority
-    > list_entry(b, struct donation_list_elem, elem)->donated_priority;
+  return list_entry(a, struct thread, donorelem)->curr_priority
+    > list_entry(b, struct thread, donorelem)->curr_priority;
 }
 
 
@@ -388,16 +388,17 @@ thread_yield (void)
  void
  thread_priority_yield(void)
  {
-  if (!list_empty(&ready_list) && thread_compute_priority(thread_current()) 
-  <= thread_compute_priority(list_entry(list_front(&ready_list), struct thread
-  , elem)))
+  enum intr_level old_level = intr_disable ();
+  if (!list_empty(&ready_list) && thread_current()->curr_priority 
+  <= list_entry(list_front(&ready_list), struct thread, elem)->curr_priority)
   {
     if (intr_context())
       intr_yield_on_return();
     else
       thread_yield();
-  }   
   }
+  intr_set_level (old_level);   
+}
 
 /* Invoke function 'func' on all threads, passing along 'aux'.
    This function must be called with interrupts off. */
@@ -422,6 +423,8 @@ thread_set_priority (int new_priority)
 {
   /* NEW: priority renamed base_priority. */
   thread_current ()->base_priority = new_priority;
+  /* update curr priority */
+  thread_current ()->curr_priority = thread_compute_priority(thread_current());
   /* NEW: Thread yield when priority is set to check if the current thread needs
   to be scheduled. */
   thread_priority_yield();
@@ -436,10 +439,10 @@ thread_get_priority (void)
 
 /* NEW: Donating the donor's priority to the receiver. */
 void thread_donate_priority(struct thread *donor, struct thread *receiver, struct lock *l) {
-  struct donation_list_elem donation;
-  donation.donated_priority = thread_compute_priority(donor);
-  donation.l = l;
-  list_insert_ordered(&receiver->donation_list, &donation.elem, priority_level_less, NULL);
+  enum intr_level old_level = intr_disable ();
+  list_insert_ordered(&receiver->donor_list, &donor->donorelem, priority_level_less, NULL);
+  receiver->curr_priority = thread_compute_priority(receiver);
+  intr_set_level (old_level);
 }
 
 /* Sets the current thread's nice value to NICE. */
@@ -559,11 +562,13 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->base_priority = priority;
+  t->curr_priority = priority;
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   list_init(&t->donation_list);
+  list_init(&t->donor_list);
   intr_set_level (old_level);
 
   
