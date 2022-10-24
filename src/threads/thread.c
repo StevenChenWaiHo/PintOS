@@ -107,14 +107,6 @@ priority_sort(const struct list_elem *a, const struct list_elem *b, void *aux UN
       && (thread_get_wake_tick(a_thread) < thread_get_wake_tick(b_thread))));
 }
 
-/* NEW: Comparator for donation_list. Simply comparing the values of two priorities. */
-bool
-priority_level_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
-  return list_entry(a, struct thread, donorelem)->curr_priority
-    > list_entry(b, struct thread, donorelem)->curr_priority;
-}
-
-
 
 /* Initializes the threading system by transforming the code
    that's currently running into a thread.  This can't work in
@@ -437,14 +429,6 @@ thread_get_priority (void)
   return thread_compute_priority(thread_current ());
 }
 
-/* NEW: Donating the donor's priority to the receiver. */
-void thread_donate_priority(struct thread *donor, struct thread *receiver, struct lock *l) {
-  enum intr_level old_level = intr_disable ();
-  list_insert_ordered(&receiver->donor_list, &donor->donorelem, priority_level_less, NULL);
-  receiver->curr_priority = thread_compute_priority(receiver);
-  intr_set_level (old_level);
-}
-
 /* Sets the current thread's nice value to NICE. */
 void
 thread_set_nice (int nice UNUSED) 
@@ -568,7 +552,6 @@ init_thread (struct thread *t, const char *name, int priority)
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
-  list_init(&t->donation_list);
   list_init(&t->donor_list);
   intr_set_level (old_level);
 

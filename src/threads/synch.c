@@ -187,8 +187,64 @@ lock_init (struct lock *lock)
   ASSERT (lock != NULL);
 
   lock->holder = NULL;
+  lock->priority_donor = NULL;
   sema_init (&lock->semaphore, 1);
-  list_init(&lock->priority_donors);
+}
+
+/* NEW: Comparator for donation_list. Simply comparing the values of two priorities. */
+static bool
+priority_level_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
+  return list_entry(a, struct thread, donorelem)->curr_priority
+    > list_entry(b, struct thread, donorelem)->curr_priority;
+}
+
+
+/* NEW: Donating the donor's priority to the receiver. */
+/**
+ * TODO: 
+ * when it is the first donation:
+ *  - GIVEN list_empty(priority_donors)
+ *  - add donor to lock's priority_donors
+ *  - add donor to thread's donorlist
+ * when it is a subsequent donation, lock donor replacement needed
+ *  - struct thread *prev_donor = list_entry(list_front(lock->priority_donors), struct thread, lock_donor_elem)
+ *  - GIVEN prev_donor.priority < receiver.priority
+ *  - list_remove(prev_donor.lock_donor_elem);
+ *  - list_remove(prev_donor.donorelem);
+ *  - add donor to lock's priority_donors: list_insert_ordered()
+ *  - add donor to thread's donorlist: list_insert_ordered()
+ * when it is a subsequent donation, lock donor replacement NOT needed
+ *  - will enter? ASSERT(false)
+ *   
+ *  finally: update priority of current thread
+ */
+
+static void
+update_thread_donor_list(struct thread *donor, struct thread *receiver, struct lock *l)
+{
+  if (l->priority_donor != NULL)
+  {
+    struct thread *prev_donor = l->priority_donor;
+    list_remove(&prev_donor->donorelem);
+  }
+	list_insert_ordered(&receiver->donor_list, &donor->donorelem, priority_level_less, NULL);
+}
+
+static void
+update_lock_priority_donors(struct thread *donor, struct lock *l)
+{
+  l->priority_donor = donor; 
+}
+
+static void
+thread_donate_priority(struct thread *donor, struct thread *receiver, struct lock *l)
+{
+  enum intr_level old_level = intr_disable ();
+  update_thread_donor_list(donor, receiver, l);
+  update_lock_priority_donors(donor, l);
+  donor->waiting_lock = l;
+  receiver->curr_priority = thread_compute_priority(receiver);
+  intr_set_level (old_level);
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -206,10 +262,12 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
   enum intr_level old_level = intr_disable ();
-  if (lock->holder != NULL){
-    if (thread_compute_priority(lock->holder) < thread_get_priority()) {
+  if (lock->holder != NULL)
+  {
+    if (thread_compute_priority(lock->holder) < thread_get_priority())
+    {
         thread_donate_priority(thread_current(), lock->holder, lock);
-      }
+    }
   }
   intr_set_level (old_level);
   sema_down (&lock->semaphore);
@@ -241,12 +299,44 @@ lock_try_acquire (struct lock *lock)
    An interrupt handler cannot acquire a lock, so it does not
    make sense to try to release a lock within an interrupt
    handler. */
+
+/* more robust null checks needed */
 void
 lock_release (struct lock *lock) 
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-
+  /* donation stuff */
+  enum intr_level old_level = intr_disable();
+  /* if curr has donor from this lock, ie thread is a donee, remove donor from donor_list */
+  /* daolo check: is there pri and is thread the pri*/
+  if (lock->priority_donor != NULL)
+  {
+    printf("ji1\n");
+    struct thread *donor = lock->priority_donor;
+    ASSERT (donor); //passes
+    if (thread_current() != donor)
+    {
+      printf("ji3.1\n");
+      //unable to remove elem, elem does not exist?
+      list_remove(&donor->donorelem);
+    }
+  
+    /* if curr has is a donee of the lock */
+    /* dailo check: is there pri and is thread the pri donor*/
+    if ((thread_current()->waiting_lock != NULL) && thread_current() == donor) //all passing??
+    {
+      printf("ji5\n");
+      ASSERT(false);
+      ASSERT(thread_current()->waiting_lock); //fails
+      ASSERT(thread_current()->waiting_lock == lock);
+      lock->priority_donor = NULL;
+    }
+  }
+  thread_current()->waiting_lock = NULL;
+  thread_current()->curr_priority = thread_compute_priority(thread_current());
+  intr_set_level(old_level);
+  /* donation stuff ends */
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }

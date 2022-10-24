@@ -90,7 +90,6 @@ struct thread
     struct lock *waiting_lock;          /* Lock that the tread is waiting on */
     int curr_priority;                  /* Current Priority. */
     int base_priority;                  /* Based Priority. */
-    struct list donation_list;          /* List of all donated priorties. */
     struct list donor_list;             /* List of all donor threads. */
     int64_t last_wake;                  /* Records last wake time*/
     struct list_elem allelem;           /* List element for all threads list. */
@@ -160,15 +159,8 @@ void *aux UNUSED);
 /* NEW: Yield that accounts for priority and external interrupt*/
 void thread_priority_yield(void);
 
-
-/* NEW: priority sort for sorting list with donation priorities. */
-bool priority_level_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
-
-
 /* NEW: Computes the input thread's highest priority at the moment.*/
 int thread_compute_priority(struct thread *);
 
-/* NEW: Handles donation from donor to receiver.*/
-void thread_donate_priority(struct thread *, struct thread *, struct lock *);
 
 #endif /* threads/thread.h */
