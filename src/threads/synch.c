@@ -312,22 +312,19 @@ lock_release (struct lock *lock)
   /* daolo check: is there pri and is thread the pri*/
   if (lock->priority_donor != NULL)
   {
-    printf("ji1\n");
     struct thread *donor = lock->priority_donor;
     ASSERT (donor); //passes
     if (thread_current() != donor)
     {
-      printf("ji3.1\n");
       //unable to remove elem, elem does not exist?
       list_remove(&donor->donorelem);
     }
   
     /* if curr has is a donee of the lock */
-    /* dailo check: is there pri and is thread the pri donor*/
+    /* check: is there pri and is thread the pri donor*/
     if ((thread_current()->waiting_lock != NULL) && thread_current() == donor) //all passing??
     {
       printf("ji5\n");
-      ASSERT(false);
       ASSERT(thread_current()->waiting_lock); //fails
       ASSERT(thread_current()->waiting_lock == lock);
       lock->priority_donor = NULL;
