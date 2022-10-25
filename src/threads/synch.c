@@ -226,8 +226,10 @@ update_thread_donor_list(struct thread *donor, struct thread *receiver, struct l
   {
     struct thread *prev_donor = l->priority_donor;
     list_remove(&prev_donor->donorelem);
+    prev_donor->waiting_lock = NULL;
   }
 	list_insert_ordered(&receiver->donor_list, &donor->donorelem, priority_level_less, NULL);
+  donor->waiting_lock = l;
 }
 
 static void
@@ -242,7 +244,6 @@ thread_donate_priority(struct thread *donor, struct thread *receiver, struct loc
   enum intr_level old_level = intr_disable ();
   update_thread_donor_list(donor, receiver, l);
   update_lock_priority_donors(donor, l);
-  donor->waiting_lock = l;
   receiver->curr_priority = thread_compute_priority(receiver);
   intr_set_level (old_level);
 }
@@ -308,26 +309,32 @@ lock_release (struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   /* donation stuff */
   enum intr_level old_level = intr_disable();
-  /* if curr has donor from this lock, ie thread is a donee, remove donor from donor_list */
-  /* daolo check: is there pri and is thread the pri*/
-  if (lock->priority_donor != NULL)
+  struct thread *donor = lock->priority_donor;
+  if (donor != NULL)
   {
-    struct thread *donor = lock->priority_donor;
-    ASSERT (donor); //passes
-    if (thread_current() != donor)
+    ASSERT (donor);
+    if (thread_current()->waiting_lock == lock) //never entered
     {
-      //unable to remove elem, elem does not exist?
-      list_remove(&donor->donorelem);
+      // if thread donor (thread->wait_lock == lock) is the thread, reset lock priority
+      ASSERT(false);
+      donor = NULL;
     }
-  
-    /* if curr has is a donee of the lock */
-    /* check: is there pri and is thread the pri donor*/
-    if ((thread_current()->waiting_lock != NULL) && thread_current() == donor) //all passing??
+    else
     {
-      printf("ji5\n");
-      ASSERT(thread_current()->waiting_lock); //fails
-      ASSERT(thread_current()->waiting_lock == lock);
-      lock->priority_donor = NULL;
+      // if locks has a received donation from lock, remove donation thread from donee
+      if (thread_current()->base_priority < donor->curr_priority && thread_current()->curr_priority == donor->curr_priority) {
+        list_remove(&donor->donorelem);        
+      } else {
+        if (thread_current()->base_priority < donor->curr_priority) {
+          list_remove(&donor->donorelem); 
+        }
+        else if (thread_current()->base_priority >  donor->curr_priority)
+        {
+          //thread_current()->base_priority >=  donor->curr_priority should not have donations!
+          ASSERT(false);
+        }
+        
+      }
     }
   }
   thread_current()->waiting_lock = NULL;
@@ -450,3 +457,25 @@ cond_broadcast (struct condition *cond, struct lock *lock)
   while (!list_empty (&cond->waiters))
     cond_signal (cond, lock);
 }
+
+// {
+//     struct thread *donor = lock->priority_donor;
+//     ASSERT (donor);
+//     if (thread_current() != donor)
+//     {
+//       list_remove(&donor->donorelem);
+//     }
+  
+//     /* if curr has is a donee of the lock */
+//     /* check: is there pri and is thread the pri donor */
+//     struct thread *wl = thread_current()->waiting_lock;
+//     printf(wl == NULL? "waitlock is null" : "waitlock tid: %d", wl->tid);
+//     printf("donor tid: %d", donor->tid);
+//     if ((thread_current()->waiting_lock != NULL) && thread_current() == donor) //not passing
+//     {
+//       printf("ji5\n");
+//       ASSERT(thread_current()->waiting_lock); //fails
+//       ASSERT(thread_current()->waiting_lock == lock);
+//       lock->priority_donor = NULL;
+//     }
+//   }
