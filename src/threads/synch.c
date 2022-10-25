@@ -188,6 +188,7 @@ lock_init (struct lock *lock)
 
   lock->holder = NULL;
   lock->priority_donor = NULL;
+  lock->lock_donee = NULL;
   sema_init (&lock->semaphore, 1);
 }
 
@@ -220,6 +221,7 @@ priority_level_less(const struct list_elem *a, const struct list_elem *b, void *
  */
 
 static void
+//thread only keep track of a lock's highest priority donation
 update_thread_donor_list(struct thread *donor, struct thread *receiver, struct lock *l)
 {
   if (l->priority_donor != NULL)
@@ -313,7 +315,7 @@ lock_release (struct lock *lock)
   if (donor != NULL)
   {
     ASSERT (donor);
-    if (thread_current()->waiting_lock == lock) //never entered
+    if (thread_current()->waiting_lock == lock) //no thread has entered here
     {
       // if thread donor (thread->wait_lock == lock) is the thread, reset lock priority
       ASSERT(false);
@@ -324,19 +326,23 @@ lock_release (struct lock *lock)
       // if locks has a received donation from lock, remove donation thread from donee
       if (thread_current()->base_priority < donor->curr_priority && thread_current()->curr_priority == donor->curr_priority) {
         list_remove(&donor->donorelem);        
-      } else {
-        if (thread_current()->base_priority < donor->curr_priority) {
-          list_remove(&donor->donorelem); 
-        }
-        else if (thread_current()->base_priority >  donor->curr_priority)
-        {
-          //thread_current()->base_priority >=  donor->curr_priority should not have donations!
-          ASSERT(false);
-        }
-        
       }
+      // else if (thread_current()->curr_priority == donor->curr_priority)
+      // {
+      //   //thread_current()->base_priority >= donor->curr_priority should not receive donations, but assertions fail
+      //   ASSERT(false);
+      // }
+      // else if (thread_current()->base_priority >= donor->curr_priority)
+      // {
+      //   //thread_current()->base_priority >= donor->curr_priority should not have donations, but assertions fail
+      //   ASSERT(false);
+      // }
+      // else { 
+      //   ASSERT(false);
+      // }  
     }
   }
+
   thread_current()->waiting_lock = NULL;
   thread_current()->curr_priority = thread_compute_priority(thread_current());
   intr_set_level(old_level);
