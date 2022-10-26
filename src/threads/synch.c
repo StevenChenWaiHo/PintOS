@@ -188,7 +188,6 @@ lock_init (struct lock *lock)
 
   lock->holder = NULL;
   list_init(&lock->priority_donors);
-  lock->lock_donee = NULL;
   sema_init (&lock->semaphore, 1);
 }
 
@@ -220,33 +219,47 @@ priority_level_less(const struct list_elem *a, const struct list_elem *b, void *
  *  finally: update priority of current thread
  */
 
+/* thread's donor list reamains unsorted, only donations larger than */
 static void
-//thread only keep track of a lock's highest priority donation
-update_thread_donor_list(struct thread *donor, struct thread *receiver, struct lock *l)
+update_thread_donor_list(struct thread *donor, struct thread *receiver, struct lock *lock)
 {
-  if (l->priority_donor != NULL)
-  {
-    struct thread *prev_donor = l->priority_donor;
-    list_remove(&prev_donor->donorelem);
-    prev_donor->waiting_lock = NULL;
-  }
-	list_insert_ordered(&receiver->donor_list, &donor->donorelem, priority_level_less, NULL);
-  donor->waiting_lock = l;
-}
-
-static void
-update_lock_priority_donors(struct thread *donor, struct lock *l)
-{
-  l->priority_donor = donor; 
-}
-
-static void
-thread_donate_priority(struct thread *donor, struct thread *receiver, struct lock *l)
-{
-  enum intr_level old_level = intr_disable ();
-  update_thread_donor_list(donor, receiver, l);
-  update_lock_priority_donors(donor, l);
+	// ASSERT(lock->holder);
+  // if (!list_empty(&receiver->donor_list) && donor->curr_priority <= list_max(&receiver->donor_list, priority_level_less, NULL))
+  // {
+  //   return;
+  // } 
+  donor->waiting_lock = lock;
+  donor->donee = receiver;
+  list_push_back(&receiver->donor_list, &donor->donorelem);
   receiver->curr_priority = thread_compute_priority(receiver);
+}
+
+/* lock's donor list reamains unsorted */
+static void
+update_lock_priority_donors(struct thread *donor, struct lock *lock)
+{
+  // if (!list_empty(&lock->priority_donors) && donor->curr_priority <= list_max(&lock->priority_donors, priority_level_less, NULL))
+  // {
+  //   return;
+  // } 
+  list_push_back(&lock->priority_donors, &donor->lock_donor_elem);
+}
+
+static void
+thread_donate_priority(struct thread *donor, struct thread *receiver, struct lock *lock)
+{  
+  enum intr_level old_level = intr_disable ();
+  update_thread_donor_list(donor, receiver, lock);
+  update_lock_priority_donors(donor, lock);
+  receiver->curr_priority = thread_compute_priority(receiver);
+  struct thread *thread = receiver;
+  for (int depth = 0; depth < NESTED_DONATION_MAX_DEPTH && thread->donee; depth++)
+  {
+    // receiver has donee, update donation priority for donee threads
+    thread_compute_priority(thread->donee);
+    thread = thread->donee;    
+  }
+  thread_compute_priority(lock->holder);
   intr_set_level (old_level);
 }
 
@@ -267,11 +280,9 @@ lock_acquire (struct lock *lock)
   enum intr_level old_level = intr_disable ();
   if (lock->holder != NULL)
   {
-    if (thread_compute_priority(lock->holder) < thread_get_priority())
-    {
-        thread_donate_priority(thread_current(), lock->holder, lock);
-    }
+    thread_donate_priority(thread_current(), lock->holder, lock);
   }
+
   intr_set_level (old_level);
   sema_down (&lock->semaphore);
   lock->holder = thread_current ();
@@ -303,7 +314,6 @@ lock_try_acquire (struct lock *lock)
    make sense to try to release a lock within an interrupt
    handler. */
 
-/* more robust null checks needed */
 void
 lock_release (struct lock *lock) 
 {
@@ -311,42 +321,29 @@ lock_release (struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   /* donation stuff */
   enum intr_level old_level = intr_disable();
-  struct thread *donor = lock->priority_donor;
-  if (donor != NULL)
+
+  if (!list_empty(&lock->priority_donors))
   {
-    ASSERT (donor);
-    if (thread_current()->waiting_lock == lock) //no thread has entered here
+    struct list_elem *donor_elem = list_front(&lock->priority_donors);
+    while (donor_elem != list_end(&lock->priority_donors))
     {
-      // if thread donor (thread->wait_lock == lock) is the thread, reset lock priority
-      ASSERT(false);
-      donor = NULL;
-    }
-    else
-    {
-      // if locks has a received donation from lock, remove donation thread from donee
-      if (thread_current()->base_priority < donor->curr_priority && thread_current()->curr_priority == donor->curr_priority) {
-        list_remove(&donor->donorelem);        
+      struct thread *thread_donor = list_entry(donor_elem, struct thread, lock_donor_elem);
+      // printf("removing tid %d from tid %d\n", thread_donor->tid, thread_current()->tid);
+      list_remove(&thread_donor->donorelem);
+
+      if (thread_donor->waiting_lock == lock) {
+        list_remove(&thread_donor->lock_donor_elem);
       }
-      // else if (thread_current()->curr_priority == donor->curr_priority)
-      // {
-      //   //thread_current()->base_priority >= donor->curr_priority should not receive donations, but assertions fail
-      //   ASSERT(false);
-      // }
-      // else if (thread_current()->base_priority >= donor->curr_priority)
-      // {
-      //   //thread_current()->base_priority >= donor->curr_priority should not have donations, but assertions fail
-      //   ASSERT(false);
-      // }
-      // else { 
-      //   ASSERT(false);
-      // }  
+
+      donor_elem = list_next(donor_elem);
     }
   }
-
   thread_current()->waiting_lock = NULL;
+  thread_current()->donee = NULL;
   thread_current()->curr_priority = thread_compute_priority(thread_current());
   intr_set_level(old_level);
   /* donation stuff ends */
+
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }

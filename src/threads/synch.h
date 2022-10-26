@@ -18,11 +18,12 @@ void sema_up (struct semaphore *);
 void sema_self_test (void);
 
 /* Lock. */
+#define NESTED_DONATION_MAX_DEPTH 8
+
 struct lock 
   {
-    struct thread *holder;       /* Thread holding lock (for debugging). */
-    struct lock *lock_donee;     /* Lock where priority is donated to. */
-    struct semaphore semaphore;  /* Binary semaphore controlling access. */
+    struct thread *holder;        /* Thread holding lock (for debugging). */
+    struct semaphore semaphore;   /* Binary semaphore controlling access. */
     struct list priority_donors;  /* priority donor of this lock */
   };
 

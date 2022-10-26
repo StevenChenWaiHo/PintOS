@@ -83,7 +83,8 @@ thread_compute_priority(struct thread *thread)
   enum intr_level old_level = intr_disable();
   if (!list_empty(&thread->donor_list))
   {
-    dp = list_entry(list_front(&thread->donor_list), struct thread, donorelem)->curr_priority;
+    dp = list_entry(list_max(&thread->donor_list, priority_sort, NULL), 
+                    struct thread, donorelem)->curr_priority;
   }
   intr_set_level(old_level);
   return bp > dp ? bp : dp;
@@ -548,6 +549,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->base_priority = priority;
   t->curr_priority = priority;
   t->waiting_lock = NULL;
+  t->donee = NULL;
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();
