@@ -70,8 +70,7 @@ sema_down (struct semaphore *sema)
     {
       /* NEW: Add thread to the priority-sorted list. 
       ORIGINAL: list_push_back (&sema->waiters, &thread_current ()->elem); */
-      list_insert_ordered (&sema->waiters, &thread_current ()->elem, 
-      priority_sort, NULL);
+      list_push_front(&sema->waiters, &thread_current ()->elem);
       thread_block ();
     }
   sema->value--;
@@ -93,7 +92,7 @@ sema_try_down (struct semaphore *sema)
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
-  if (sema->value > 0) 
+  if (sema->value > 0)
     {
       sema->value--;
       success = true; 
@@ -117,9 +116,13 @@ sema_up (struct semaphore *sema)
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
-  if (!list_empty (&sema->waiters)) 
-    thread_unblock (list_entry (list_pop_front (&sema->waiters),
-                                struct thread, elem));
+  if (!list_empty (&sema->waiters))
+  {
+    struct thread *waiter = list_entry (list_min (&sema->waiters, priority_sort, NULL),
+                                 struct thread, elem);
+     list_remove(&waiter->elem);
+    thread_unblock (waiter);
+  }
   sema->value++;
   /* QUESTION: Should yield be after/before the interrupt signal off it doesnt work
   if it is in the signal off but will it cause issue? 
@@ -191,16 +194,8 @@ lock_init (struct lock *lock)
   sema_init (&lock->semaphore, 1);
 }
 
-/* NEW: Comparator for donation_list. Simply comparing the values of two priorities. */
-static bool
-priority_level_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
-  return list_entry(a, struct thread, donorelem)->curr_priority
-    > list_entry(b, struct thread, donorelem)->curr_priority;
-}
-
-
 /* NEW: Donating the donor's priority to the receiver. */
-/**
+
 /* thread's donor list reamains unsorted */
 static void
 update_thread_donor_list(struct thread *donor, struct thread *receiver, struct lock *lock)
@@ -442,25 +437,3 @@ cond_broadcast (struct condition *cond, struct lock *lock)
   while (!list_empty (&cond->waiters))
     cond_signal (cond, lock);
 }
-
-// {
-//     struct thread *donor = lock->priority_donor;
-//     ASSERT (donor);
-//     if (thread_current() != donor)
-//     {
-//       list_remove(&donor->donorelem);
-//     }
-  
-//     /* if curr has is a donee of the lock */
-//     /* check: is there pri and is thread the pri donor */
-//     struct thread *wl = thread_current()->waiting_lock;
-//     printf(wl == NULL? "waitlock is null" : "waitlock tid: %d", wl->tid);
-//     printf("donor tid: %d", donor->tid);
-//     if ((thread_current()->waiting_lock != NULL) && thread_current() == donor) //not passing
-//     {
-//       printf("ji5\n");
-//       ASSERT(thread_current()->waiting_lock); //fails
-//       ASSERT(thread_current()->waiting_lock == lock);
-//       lock->priority_donor = NULL;
-//     }
-//   }
