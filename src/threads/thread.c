@@ -83,8 +83,8 @@ thread_compute_priority(struct thread *thread)
   enum intr_level old_level = intr_disable();
   if (!list_empty(&thread->donor_list))
   {
-    dp = list_entry(list_max(&thread->donor_list, priority_sort, NULL), 
-                    struct thread, donorelem)->curr_priority;
+    dp = thread_compute_priority(list_entry(list_max(&thread->donor_list, priority_sort, NULL),
+                                            struct thread, donorelem));
   }
   intr_set_level(old_level);
   return bp > dp ? bp : dp;
@@ -95,7 +95,7 @@ static int64_t thread_get_wake_tick(struct thread *thread) {
   return thread->last_wake;
 }
 
-/* NEW: Comparator for ready_list, keeping the oldest and highest priority 
+/* NEW: Comparator for ready_list, keeping the least recent and highest priority 
 thread at the front of the list. */
 bool 
 priority_sort(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
@@ -103,8 +103,13 @@ priority_sort(const struct list_elem *a, const struct list_elem *b, void *aux UN
   struct thread *a_thread = list_entry(a, struct thread, elem);
   struct thread *b_thread = list_entry(b, struct thread, elem);
 
-  return (a_thread->curr_priority > b_thread->curr_priority
-    || ((a_thread->curr_priority == b_thread->curr_priority)
+  ASSERT (is_thread(a_thread));
+  ASSERT (is_thread(b_thread));
+
+  int a_thread_p = thread_compute_priority(a_thread);
+  int b_thread_p = thread_compute_priority(b_thread);
+
+  return (a_thread_p > b_thread_p || ((a_thread_p == b_thread_p)
       && (thread_get_wake_tick(a_thread) < thread_get_wake_tick(b_thread))));
 }
 
@@ -130,6 +135,7 @@ thread_init (void)
   lock_init (&tid_lock);
   list_init (&ready_list);
   list_init (&all_list);
+  list_init(&initial_thread->donor_list);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -382,8 +388,8 @@ thread_yield (void)
  thread_priority_yield(void)
  {
   enum intr_level old_level = intr_disable ();
-  if (!list_empty(&ready_list) && thread_current()->curr_priority 
-  <= list_entry(list_front(&ready_list), struct thread, elem)->curr_priority)
+  if (!list_empty(&ready_list) && thread_compute_priority(thread_current())
+  <= thread_compute_priority(list_entry(list_front(&ready_list), struct thread, elem)))
   {
     if (intr_context())
       intr_yield_on_return();
@@ -416,8 +422,6 @@ thread_set_priority (int new_priority)
 {
   /* NEW: priority renamed base_priority. */
   thread_current ()->base_priority = new_priority;
-  /* update curr priority */
-  thread_current ()->curr_priority = thread_compute_priority(thread_current());
   /* NEW: Thread yield when priority is set to check if the current thread needs
   to be scheduled. */
   thread_priority_yield();
@@ -547,7 +551,6 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->base_priority = priority;
-  t->curr_priority = priority;
   t->waiting_lock = NULL;
   t->donee = NULL;
   t->magic = THREAD_MAGIC;

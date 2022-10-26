@@ -191,13 +191,13 @@ lock_init (struct lock *lock)
   sema_init (&lock->semaphore, 1);
 }
 
-/* NEW: Comparator for donation_list. Simply comparing the values of two priorities. */
+/* Legacy Code: Comparator for donation_list. Simply comparing the values of two priorities.
 static bool
 priority_level_less(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED) {
   return list_entry(a, struct thread, donorelem)->curr_priority
     > list_entry(b, struct thread, donorelem)->curr_priority;
 }
-
+*/
 
 /* NEW: Donating the donor's priority to the receiver. */
 /**
@@ -231,7 +231,6 @@ update_thread_donor_list(struct thread *donor, struct thread *receiver, struct l
   donor->waiting_lock = lock;
   donor->donee = receiver;
   list_push_back(&receiver->donor_list, &donor->donorelem);
-  receiver->curr_priority = thread_compute_priority(receiver);
 }
 
 /* lock's donor list reamains unsorted */
@@ -251,15 +250,12 @@ thread_donate_priority(struct thread *donor, struct thread *receiver, struct loc
   enum intr_level old_level = intr_disable ();
   update_thread_donor_list(donor, receiver, lock);
   update_lock_priority_donors(donor, lock);
-  receiver->curr_priority = thread_compute_priority(receiver);
   struct thread *thread = receiver;
   for (int depth = 0; depth < NESTED_DONATION_MAX_DEPTH && thread->donee; depth++)
   {
     // receiver has donee, update donation priority for donee threads
-    thread_compute_priority(thread->donee);
     thread = thread->donee;    
   }
-  thread_compute_priority(lock->holder);
   intr_set_level (old_level);
 }
 
@@ -340,7 +336,6 @@ lock_release (struct lock *lock)
   }
   thread_current()->waiting_lock = NULL;
   thread_current()->donee = NULL;
-  thread_current()->curr_priority = thread_compute_priority(thread_current());
   intr_set_level(old_level);
   /* donation stuff ends */
 
