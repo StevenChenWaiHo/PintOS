@@ -492,7 +492,6 @@ list_unique (struct list *list, struct list *duplicates,
 struct list_elem *
 list_max (struct list *list, list_less_func *less, void *aux)
 {
-  ASSERT(!list_empty(list));
   struct list_elem *max = list_begin(list);
   if (max != list_end (list)) 
     {

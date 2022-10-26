@@ -72,22 +72,18 @@ static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
 
-/* NEW: Compare the base_priority of a thread and the highest donated_priority
-and return the max priority.  */
-int 
-thread_compute_priority(struct thread *thread)
-{
-  ASSERT (is_thread(thread));
-  int dp = 0;
-  int bp = thread->base_priority;
-  enum intr_level old_level = intr_disable();
-  if (!list_empty(&thread->donor_list))
-  {
-    dp = thread_compute_priority(list_entry(list_max(&thread->donor_list, priority_sort, NULL),
-                                            struct thread, donorelem));
+void print_donar_list(struct list *list){
+  if (list_empty(list)){
+    printf("List Empty \n");
+    return;
   }
-  intr_set_level(old_level);
-  return bp > dp ? bp : dp;
+  struct list_elem *elem = list_begin(list);
+  do
+  {
+      struct thread * t = list_entry(elem, struct thread, donorelem);
+      printf("tid: %d, Priority: %d", t->tid, thread_compute_priority(t));
+      elem = elem->next;
+    } while (elem != list_end (list));
 }
 
 /* NEW: Return the last wake tick of a thread. */
@@ -111,6 +107,42 @@ priority_sort(const struct list_elem *a, const struct list_elem *b, void *aux UN
 
   return (a_thread_p > b_thread_p || ((a_thread_p == b_thread_p)
       && (thread_get_wake_tick(a_thread) < thread_get_wake_tick(b_thread))));
+}
+
+/* NEW: Comparator for donor_list, keeping the least recent and highest priority 
+thread at the front of the list. */
+static bool 
+donor_list_priority_sort(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  struct thread *a_thread = list_entry(a, struct thread, donorelem);
+  struct thread *b_thread = list_entry(b, struct thread, donorelem);
+
+  ASSERT (is_thread(a_thread));
+  ASSERT (is_thread(b_thread));
+
+  int a_thread_p = thread_compute_priority(a_thread);
+  int b_thread_p = thread_compute_priority(b_thread);
+
+  return (a_thread_p > b_thread_p || ((a_thread_p == b_thread_p)
+      && (thread_get_wake_tick(a_thread) < thread_get_wake_tick(b_thread))));
+}
+
+/* NEW: Compare the base_priority of a thread and the highest donated_priority
+and return the max priority.  */
+int 
+thread_compute_priority(struct thread *thread)
+{
+  ASSERT (is_thread(thread));
+  int dp = 0;
+  int bp = thread->base_priority;
+  enum intr_level old_level = intr_disable();
+  if (!list_empty(&thread->donor_list))
+  {
+    dp = thread_compute_priority(list_entry(list_min(&thread->donor_list, donor_list_priority_sort, NULL),
+                                            struct thread, donorelem));
+  }
+  intr_set_level(old_level);
+  return bp > dp ? bp : dp;
 }
 
 
