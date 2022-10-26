@@ -201,25 +201,7 @@ priority_level_less(const struct list_elem *a, const struct list_elem *b, void *
 
 /* NEW: Donating the donor's priority to the receiver. */
 /**
- * TODO: 
- * when it is the first donation:
- *  - GIVEN list_empty(priority_donors)
- *  - add donor to lock's priority_donors
- *  - add donor to thread's donorlist
- * when it is a subsequent donation, lock donor replacement needed
- *  - struct thread *prev_donor = list_entry(list_front(lock->priority_donors), struct thread, lock_donor_elem)
- *  - GIVEN prev_donor.priority < receiver.priority
- *  - list_remove(prev_donor.lock_donor_elem);
- *  - list_remove(prev_donor.donorelem);
- *  - add donor to lock's priority_donors: list_insert_ordered()
- *  - add donor to thread's donorlist: list_insert_ordered()
- * when it is a subsequent donation, lock donor replacement NOT needed
- *  - will enter? ASSERT(false)
- *   
- *  finally: update priority of current thread
- */
-
-/* thread's donor list reamains unsorted, only donations larger than */
+/* thread's donor list reamains unsorted */
 static void
 update_thread_donor_list(struct thread *donor, struct thread *receiver, struct lock *lock)
 {
@@ -256,7 +238,7 @@ thread_donate_priority(struct thread *donor, struct thread *receiver, struct loc
   for (int depth = 0; depth < NESTED_DONATION_MAX_DEPTH && thread->donee; depth++)
   {
     // receiver has donee, update donation priority for donee threads
-    thread_compute_priority(thread->donee);
+    thread->donee->curr_priority = thread_compute_priority(thread->donee);
     thread = thread->donee;    
   }
   thread_compute_priority(lock->holder);
