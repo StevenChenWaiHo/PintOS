@@ -331,7 +331,14 @@ lock_release (struct lock *lock)
     }
   }
   thread_current()->waiting_lock = NULL;
-  thread_current()->curr_priority = thread_compute_priority(thread_current());
+  if (thread_mlfqs)
+  {
+    thread_update_priority_mlfqs(thread_current());
+  } else
+  {
+    thread_current()->curr_priority = thread_compute_priority(thread_current());
+  }
+  
   intr_set_level(old_level);
   /* donation stuff ends */
   lock->holder = NULL;
