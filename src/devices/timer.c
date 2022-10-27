@@ -23,7 +23,7 @@ static int64_t ticks;
    Initialized by timer_calibrate(). */
 static unsigned loops_per_tick;
 
-/* Maintains a sorted list of thread_sleep, ordered by the time until the thread wakes*/
+/* Maintains a sorted list of thread_sleep, ordered by the wake time*/
 struct list thread_sleep_list;
 
 static intr_handler_func timer_interrupt;
@@ -32,7 +32,8 @@ static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
 static void timer_wake (void);
-static bool sleep_time_cmp (const struct list_elem *p, const struct list_elem *q, void *aux) UNUSED;
+static bool sleep_time_cmp 
+(const struct list_elem *p, const struct list_elem *q, void *aux) UNUSED;
 
 /* Sets up the timer to interrupt TIMER_FREQ times per second,
    and registers the corresponding interrupt. */
@@ -92,7 +93,8 @@ timer_elapsed (int64_t then)
 
 /* Returns true if wake up time of a is earlier than that of b */
 static bool
-sleep_time_cmp (const struct list_elem *p, const struct list_elem *q, void *aux UNUSED)
+sleep_time_cmp 
+(const struct list_elem *p, const struct list_elem *q, void *aux UNUSED)
 {
   struct thread_sleep *p_sleep_elem = list_entry(p, struct thread_sleep, elem);
   struct thread_sleep *q_sleep_elem = list_entry(q, struct thread_sleep, elem);
@@ -125,7 +127,8 @@ timer_wake (void)
 {
   while (!list_empty(&thread_sleep_list))
   {
-    struct thread_sleep *curr = list_entry(list_front(&thread_sleep_list), struct thread_sleep, elem);
+    struct thread_sleep *curr = 
+      list_entry(list_front(&thread_sleep_list), struct thread_sleep, elem);
     // NEW: Should be less than to account for threads that missed wake tick
     if (curr->sleep_until <= ticks) 
     {

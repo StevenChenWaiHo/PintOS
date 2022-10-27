@@ -11,8 +11,8 @@
 
 struct thread_sleep
 {
-    int64_t sleep_until;    /* The time to wake up a thread */
-    struct semaphore sema;  /* Up when thread wakes up, down to shcedule it to sleep */
+    int64_t sleep_until;    /* The time to wake up a thread. */
+    struct semaphore sema;  /* Semaphore for the thread. */
     struct list_elem elem;  /* List element. */
 };
 

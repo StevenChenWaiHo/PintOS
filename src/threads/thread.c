@@ -566,7 +566,7 @@ thread_get_recent_cpu (void)
 
 /* Recalculate load_avg. */
 static void
-recalculate_load_avg(void)
+recalculate_load_avg (void)
 {
   fixed_int fiftynine_sixty = div_int(convert(59), 60);
   fixed_int one_sixty = div_int(convert(1), 60);
