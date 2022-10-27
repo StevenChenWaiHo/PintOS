@@ -74,17 +74,17 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
-static int thread_calc_priority_mlfqs(struct thread *thread);
+static int thread_calc_priority_mlfqs (struct thread *thread);
 
-static void recalculate_load_avg(void);
+static void recalculate_load_avg (void);
 
-static bool priority_donor_sort(const struct list_elem *a, 
-const struct list_elem *b, void *aux UNUSED);
+static bool priority_donor_sort 
+(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
 /* Compute the most updated priority based on its base_priority and the highest
 priority thread in its donor_list. */
 int 
-thread_compute_priority(struct thread *thread)
+thread_compute_priority (struct thread *thread)
 {
   ASSERT (is_thread(thread));
   int dp = 0;
@@ -117,8 +117,8 @@ compare_priority_and_wake_tick(struct thread *a_thread, struct thread *b_thread)
 /* Comparator for ready_list, keeping the least recent and highest priority 
 thread at the front of the ready_list. */
 bool 
-priority_sort(const struct list_elem *a, const struct list_elem *b, 
-void *aux UNUSED)
+priority_sort
+(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
   struct thread *a_thread = list_entry(a, struct thread, elem);
   struct thread *b_thread = list_entry(b, struct thread, elem);
@@ -127,8 +127,8 @@ void *aux UNUSED)
 
 /* Comparator for donor_list, to get the top priority. */
 static bool 
-priority_donor_sort(const struct list_elem *a, const struct list_elem *b, 
-void *aux UNUSED)
+priority_donor_sort
+(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
 {
   struct thread *a_thread = list_entry(a, struct thread, donorelem);
   struct thread *b_thread = list_entry(b, struct thread, donorelem);
@@ -266,8 +266,7 @@ thread_print_stats (void)
    PRIORITY, but no actual priority scheduling is implemented.
    Priority scheduling is the goal of Problem 1-3. */
 tid_t
-thread_create (const char *name, int priority,
-               thread_func *function, void *aux) 
+thread_create (const char *name, int priority, thread_func *function, void *aux) 
 {
   struct thread *t;
   struct kernel_thread_frame *kf;
@@ -442,7 +441,7 @@ thread_yield (void)
 than the thread at the front of the ready list. Also use intr_yield_on_return 
 for external interrupts. */
  void
- thread_priority_yield(void)
+ thread_priority_yield (void)
  {
   enum intr_level old_level = intr_disable ();
   if (!list_empty(&ready_list) && thread_current()->curr_priority 
@@ -502,14 +501,14 @@ thread_get_priority (void)
 }
 
 /* Return update and return updated thread priority for mlfqs. */
-static int thread_calc_priority_mlfqs(struct thread *thread)
+static int thread_calc_priority_mlfqs (struct thread *thread)
 {
   thread_update_priority_mlfqs(thread);
   return thread->curr_priority;
 }
 
 /* Updates thread priority for mlfqs. */
-void thread_update_priority_mlfqs(struct thread *thread)
+void thread_update_priority_mlfqs (struct thread *thread)
 {
   fixed_int cpu_div_four = div_int(thread->recent_cpu, 4);
   fixed_int pri_max_fixed = convert(PRI_MAX);
@@ -582,7 +581,7 @@ recalculate_load_avg(void)
 
 /* Recalculate recent_cpu for thread t*/
 void
-recalculate_recent_cpu(struct thread *t, void *aux UNUSED)
+recalculate_recent_cpu (struct thread *t, void *aux UNUSED)
 {
   fixed_int load_avg_mul_two = mul_int(load_avg, 2);
   fixed_int load_avg_mul_two_add_one = add_int(load_avg_mul_two, 1);
