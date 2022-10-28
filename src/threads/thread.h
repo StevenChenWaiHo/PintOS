@@ -92,7 +92,7 @@ struct thread
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
-    struct thread *donee;               /* Lock that the tread is waiting on */
+    struct thread *donee;               /* Lock that the thread is waiting on */
     int curr_priority;                  /* Current Priority. */
     int base_priority;                  /* Based Priority.(Not used in mlfqs) */
     int nice;                           /* Thread niceness. */
@@ -100,7 +100,7 @@ struct thread
     struct list donor_list;             /* List of all donor threads. */
     int64_t last_wake;                  /* Records last wake time. */
     struct list_elem allelem;           /* List element for all threads list. */
-    struct list_elem donorelem;         /* List element for donee's donation_list. */
+    struct list_elem donorelem;         /* List element for donor_list. */
     struct list_elem lock_donor_elem;   /* List element for a locks's donors. */
    
     /* Shared between thread.c and synch.c. */
@@ -114,14 +114,6 @@ struct thread
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
-
-/* NEW: Donation list element struct.
-   Contains the donated priority and the lock. */
-struct donation_list_elem {
-   int donated_priority;
-   struct list_elem elem;
-   struct lock *l;
-};
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
@@ -162,13 +154,13 @@ void recalculate_recent_cpu(struct thread *t, void *aux);
 void thread_update_priority_mlfqs(struct thread *thread);
 
 int thread_compute_priority(struct thread *);
-/* NEW: Priority sort for sorting a list. */
-bool priority_sort(const struct list_elem *a, const struct list_elem *b, 
-void *aux UNUSED);
-/* NEW: Yield that accounts for priority and external interrupt*/
+/* Priority sort for sorting a list. */
+bool priority_sort(const struct list_elem *a, const struct list_elem *b
+   , void *aux UNUSED);
+/* Yields that accounts for priority and external interrupt. */
 void thread_priority_yield(void);
 
-/* NEW: Computes the input thread's highest priority at the moment.*/
+/* Computes thread's highest effective priority. */
 int thread_compute_priority(struct thread *);
 
 
