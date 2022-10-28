@@ -216,23 +216,29 @@ static void
 thread_donate_priority(struct thread *donor, struct thread *receiver, struct lock *lock)
 {  
   enum intr_level old_level = intr_disable ();
-  update_thread_donor_list(donor, receiver);
-  update_lock_priority_donors(donor, lock);
-  receiver->curr_priority = thread_compute_priority(receiver);
-  struct thread *thread = receiver;
-  /* cascading update of donee priority */
-  for (int depth = 0; depth < NESTED_DONATION_MAX_DEPTH && thread->donee; depth++)
+  /* thread donates priority when exists lock holder */
+  if (lock->holder != NULL)
   {
-    thread->donee->curr_priority = thread_compute_priority(thread->donee);
-    thread = thread->donee;
+    update_thread_donor_list(donor, receiver);
+    update_lock_priority_donors(donor, lock);
+    receiver->curr_priority = thread_compute_priority(receiver);
+    struct thread *thread = receiver;
+    /* cascading update of donee priority */
+    for (int depth = 0; depth < NESTED_DONATION_MAX_DEPTH && thread->donee; depth++)
+    {
+      thread->donee->curr_priority = thread_compute_priority(thread->donee);
+      thread = thread->donee;
+    }
+    thread_compute_priority(lock->holder);
   }
-  thread_compute_priority(lock->holder);
   intr_set_level (old_level);
 }
 
 static void
 thread_inherit_lock_priority(struct lock *lock)
-{  if (!list_empty(&lock->priority_donors))
+{  
+  enum intr_level old_level = intr_disable ();
+  if (!list_empty(&lock->priority_donors))
   {
     struct list_elem *donor_elem = list_front(&lock->priority_donors);
     while (donor_elem != list_end(&lock->priority_donors))
@@ -245,6 +251,7 @@ thread_inherit_lock_priority(struct lock *lock)
       donor_elem = list_next(donor_elem);
     }
   }
+  intr_set_level (old_level);
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -256,22 +263,20 @@ thread_inherit_lock_priority(struct lock *lock)
    interrupts disabled, but interrupts will be turned back on if
    we need to sleep. */
 void
-lock_acquire (struct lock *lock)
+lock_acquire(struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
-  enum intr_level old_level = intr_disable ();
-  /* thread donates priority when exists lock holder */
-  if (lock->holder != NULL)
-  {
+
+  if (!thread_mlfqs)
     thread_donate_priority(thread_current(), lock->holder, lock);
-  }
-  sema_down (&lock->semaphore);
-  /* thread inherits priority when it becomes lock holder */
-  thread_inherit_lock_priority(lock);
-  intr_set_level (old_level);
+  sema_down (&lock->semaphore);  
+  if (!thread_mlfqs)
+    /* thread inherits priority when it becomes lock holder */
+    thread_inherit_lock_priority(lock);
   lock->holder = thread_current ();
+  
 }
 
 
@@ -311,9 +316,9 @@ lock_donation_remove (struct lock *lock)
       donor_elem = list_next(donor_elem);
     }
   }
+  intr_set_level(old_level);
   thread_current()->donee = NULL;
   thread_current()->curr_priority = thread_compute_priority(thread_current());
-  intr_set_level(old_level);
 }
 
 /* Releases LOCK, which must be owned by the current thread.
@@ -327,8 +332,9 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-  /* donation stuff */
-  lock_donation_remove(lock);
+
+  if (!thread_mlfqs)
+    lock_donation_remove(lock);
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);
