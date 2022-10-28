@@ -198,9 +198,8 @@ lock_init (struct lock *lock)
 
 /* thread's donor list reamains unsorted */
 static void
-update_thread_donor_list(struct thread *donor, struct thread *receiver, struct lock *lock)
+update_thread_donor_list(struct thread *donor, struct thread *receiver)
 {
-  donor->waiting_lock = lock;
   donor->donee = receiver;
   list_push_back(&receiver->donor_list, &donor->donorelem);
   receiver->curr_priority = thread_compute_priority(receiver);
@@ -217,7 +216,7 @@ static void
 thread_donate_priority(struct thread *donor, struct thread *receiver, struct lock *lock)
 {  
   enum intr_level old_level = intr_disable ();
-  update_thread_donor_list(donor, receiver, lock);
+  update_thread_donor_list(donor, receiver);
   update_lock_priority_donors(donor, lock);
   receiver->curr_priority = thread_compute_priority(receiver);
   struct thread *thread = receiver;
@@ -296,18 +295,9 @@ lock_try_acquire (struct lock *lock)
   return success;
 }
 
-/* Releases LOCK, which must be owned by the current thread.
-
-   An interrupt handler cannot acquire a lock, so it does not
-   make sense to try to release a lock within an interrupt
-   handler. */
-
-void
-lock_release (struct lock *lock) 
+static void
+lock_donation_remove (struct lock *lock)
 {
-  ASSERT (lock != NULL);
-  ASSERT (lock_held_by_current_thread (lock));
-  /* donation stuff */
   enum intr_level old_level = intr_disable();
 
   if (!list_empty(&lock->priority_donors))
@@ -321,10 +311,24 @@ lock_release (struct lock *lock)
       donor_elem = list_next(donor_elem);
     }
   }
-  thread_current()->waiting_lock = NULL;
   thread_current()->donee = NULL;
   thread_current()->curr_priority = thread_compute_priority(thread_current());
   intr_set_level(old_level);
+}
+
+/* Releases LOCK, which must be owned by the current thread.
+
+   An interrupt handler cannot acquire a lock, so it does not
+   make sense to try to release a lock within an interrupt
+   handler. */
+
+void
+lock_release (struct lock *lock) 
+{
+  ASSERT (lock != NULL);
+  ASSERT (lock_held_by_current_thread (lock));
+  /* donation stuff */
+  lock_donation_remove(lock);
 
   lock->holder = NULL;
   sema_up (&lock->semaphore);

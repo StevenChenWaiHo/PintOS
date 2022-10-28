@@ -71,6 +71,7 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
+static bool priority_donor_sort(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED);
 
 /* NEW: Compare the base_priority of a thread and the highest donated_priority
 and return the max priority.  */
@@ -83,7 +84,7 @@ thread_compute_priority(struct thread *thread)
   enum intr_level old_level = intr_disable();
   if (!list_empty(&thread->donor_list))
   {
-    dp = list_entry(list_max(&thread->donor_list, priority_sort, NULL), 
+    dp = list_entry(list_min(&thread->donor_list, priority_donor_sort, NULL), 
                     struct thread, donorelem)->curr_priority;
   }
   intr_set_level(old_level);
@@ -102,6 +103,19 @@ priority_sort(const struct list_elem *a, const struct list_elem *b, void *aux UN
 {
   struct thread *a_thread = list_entry(a, struct thread, elem);
   struct thread *b_thread = list_entry(b, struct thread, elem);
+
+  return (a_thread->curr_priority > b_thread->curr_priority
+    || ((a_thread->curr_priority == b_thread->curr_priority)
+      && (thread_get_wake_tick(a_thread) < thread_get_wake_tick(b_thread))));
+}
+
+/* NEW: Comparator for ready_list, keeping the oldest and highest priority 
+thread at the front of the list. */
+static bool 
+priority_donor_sort(const struct list_elem *a, const struct list_elem *b, void *aux UNUSED)
+{
+  struct thread *a_thread = list_entry(a, struct thread, donorelem);
+  struct thread *b_thread = list_entry(b, struct thread, donorelem);
 
   return (a_thread->curr_priority > b_thread->curr_priority
     || ((a_thread->curr_priority == b_thread->curr_priority)
@@ -414,10 +428,12 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
+  enum intr_level old_level = intr_disable();
   /* NEW: priority renamed base_priority. */
   thread_current ()->base_priority = new_priority;
   /* update curr priority */
   thread_current ()->curr_priority = thread_compute_priority(thread_current());
+  intr_set_level(old_level);
   /* NEW: Thread yield when priority is set to check if the current thread needs
   to be scheduled. */
   thread_priority_yield();
@@ -548,7 +564,6 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->base_priority = priority;
   t->curr_priority = priority;
-  t->waiting_lock = NULL;
   t->donee = NULL;
   t->magic = THREAD_MAGIC;
 

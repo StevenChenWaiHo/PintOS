@@ -87,7 +87,6 @@ struct thread
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
-    struct lock *waiting_lock;          /* Lock that the tread is waiting on */
     struct thread *donee;               /* Lock that the tread is waiting on */
     int curr_priority;                  /* Current Priority. */
     int base_priority;                  /* Based Priority. */
