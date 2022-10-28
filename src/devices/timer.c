@@ -215,14 +215,6 @@ timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
   timer_wake ();
-  if (thread_mlfqs)
-  {
-    thread_current()->recent_cpu++; /* TODO: Test this. */
-    if (timer_ticks() % TIMER_FREQ == 0)
-    {
-      thread_foreach(recalculate_recent_cpu(), NULL);
-    }
-  }
   thread_tick ();
 }
 

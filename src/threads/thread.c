@@ -61,7 +61,6 @@ static unsigned thread_ticks;   /* # of timer ticks since last yield. */
    Controlled by kernel command-line option "-mlfqs". */
 bool thread_mlfqs;
 
-/* TODO: Change to Fixed Point. */
 fixed_int load_avg;
 
 static void kernel_thread (thread_func *, void *aux);
@@ -260,9 +259,13 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread(t, name, priority);
   tid = t->tid = allocate_tid ();
-  if (thread_mlfqs)
+  if (thread_mlfqs && thread_current() != initial_thread)
   {
-    t->recent_cpu = thread_get_recent_cpu();
+    t->recent_cpu = thread_current()->recent_cpu;
+    t->nice = thread_current()->nice;
+  } else {
+    t->recent_cpu = 0;
+    t->nice = 0;
   }
 
   /* Prepare thread for first run by initializing its stack.
@@ -419,7 +422,7 @@ thread_yield (void)
  {
   enum intr_level old_level = intr_disable ();
   if (!list_empty(&ready_list) && thread_current()->curr_priority 
-  <= list_entry(list_front(&ready_list), struct thread, elem)->curr_priority)
+    <= list_entry(list_front(&ready_list), struct thread, elem)->curr_priority)
   {
     if (intr_context())
       intr_yield_on_return();
@@ -483,20 +486,26 @@ static int thread_calc_priority_mlfqs(struct thread *thread)
 void thread_update_priority_mlfqs(struct thread *thread)
 {
   fixed_int cpu_div_four = div_int(thread->recent_cpu, 4);
-  fixed_int nice_mul_two = mul_int(thread->nice, 2);
   fixed_int pri_max_fixed = convert(PRI_MAX);
-  thread->curr_priority = convert_int_nearest(sub(sub(pri_max_fixed, cpu_div_four), nice_mul_two));
+  int clamp = convert_int_nearest(sub(pri_max_fixed, cpu_div_four)) - thread->nice * 2;
+  if (clamp < PRI_MIN) {
+    clamp = PRI_MIN;
+  } else if (clamp > PRI_MAX) {
+    clamp = PRI_MAX;
+  }
+  thread->curr_priority = clamp;
 }
 
 /* Sets the current thread's nice value to NICE, also checks priority. */
 void
-thread_set_nice (int nice) 
+thread_set_nice (int new_nice) 
 {
   if (!thread_mlfqs)
   {
     return;
   }
-  thread_current()->nice = nice;
+  thread_current()->nice = new_nice;
+  thread_calc_priority_mlfqs(thread_current());
   thread_priority_yield();
 }
 
@@ -540,7 +549,7 @@ recalculate_load_avg(void)
 }
 
 void
-recalculate_recent_cpu(struct thread *t, void *aux)
+recalculate_recent_cpu(struct thread *t, void *aux UNUSED)
 {
   fixed_int load_avg_mul_two = mul_int(load_avg, 2);
   fixed_int load_avg_mul_two_add_one = add_int(load_avg_mul_two, 1);
