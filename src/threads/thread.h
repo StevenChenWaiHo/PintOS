@@ -151,7 +151,7 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 void recalculate_recent_cpu(struct thread *t, void *aux);
-void thread_update_priority_mlfqs(struct thread *thread);
+int thread_update_priority_mlfqs(struct thread *thread);
 
 int thread_compute_priority(struct thread *);
 /* Priority sort for sorting a list. */
