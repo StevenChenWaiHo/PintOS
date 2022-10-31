@@ -100,7 +100,7 @@ struct thread
     struct list donor_list;             /* List of all donor threads. */
     int64_t last_wake;                  /* Records last wake time. */
     struct list_elem allelem;           /* List element for all threads list. */
-    struct list_elem donorelem;         /* List element for donee's donation_list. */
+    struct list_elem donorelem;         /* List element for donee's donor_list. */
     struct list_elem lock_donor_elem;   /* List element for a locks's donors. */
    
     /* Shared between thread.c and synch.c. */
