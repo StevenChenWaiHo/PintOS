@@ -74,7 +74,6 @@ static void *alloc_frame (struct thread *, size_t size);
 static void schedule (void);
 void thread_schedule_tail (struct thread *prev);
 static tid_t allocate_tid (void);
-static int thread_calc_priority_mlfqs (struct thread *thread);
 
 static void recalculate_load_avg (void);
 
@@ -492,23 +491,16 @@ thread_set_priority (int new_priority)
 }
 
 /* Returns the current thread's priority. If thread_mlfqs is TRUE get priority
-using thread_calc_priority_mlfqs() else use thread_compute_priority(). */
+using thread_update_priority_mlfqs() else use thread_compute_priority(). */
 int
 thread_get_priority (void) 
 {
-  return thread_mlfqs ? thread_calc_priority_mlfqs(thread_current())
+  return thread_mlfqs ? thread_update_priority_mlfqs(thread_current())
          : thread_compute_priority(thread_current ());
 }
 
-/* Return update and return updated thread priority for mlfqs. */
-static int thread_calc_priority_mlfqs (struct thread *thread)
-{
-  thread_update_priority_mlfqs(thread);
-  return thread->curr_priority;
-}
-
-/* Updates thread priority for mlfqs. */
-void thread_update_priority_mlfqs (struct thread *thread)
+/* NEW: Updates thread priority for mlfqs and returns it. */
+int thread_update_priority_mlfqs(struct thread *thread)
 {
   fixed_int cpu_div_four = div_int(thread->recent_cpu, 4);
   fixed_int pri_max_fixed = convert(PRI_MAX);
@@ -521,6 +513,7 @@ void thread_update_priority_mlfqs (struct thread *thread)
     clamp = PRI_MAX;
   }
   thread->curr_priority = clamp;
+  return thread->curr_priority;
 }
 
 /* Sets the current thread's nice value to new_nice, update priority for current
@@ -533,7 +526,7 @@ thread_set_nice (int new_nice)
     return;
   }
   thread_current()->nice = new_nice;
-  thread_calc_priority_mlfqs(thread_current());
+  thread_update_priority_mlfqs(thread_current());
   thread_priority_yield();
 }
 
