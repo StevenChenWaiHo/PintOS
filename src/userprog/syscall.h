@@ -1,3 +1,6 @@
+#ifndef USERPROG
+#define USERPROG
+
 #ifndef USERPROG_SYSCALL_H
 #define USERPROG_SYSCALL_H
 
@@ -31,5 +34,5 @@ void (*sys_call[13])() = {
     read, write, seek, tell, close
 };
 
-
+#endif
 #endif /* userprog/syscall.h */
