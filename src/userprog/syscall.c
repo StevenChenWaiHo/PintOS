@@ -45,7 +45,7 @@ syscall_handler (struct intr_frame *f)
   switch (sys_call_num) {
     case SYS_HALT: 
     {
-      sys_call[SYS_HALT]();
+      sys_call[SYS_HALT] ();
     }
     case SYS_EXIT: case SYS_EXEC: case SYS_WAIT:
     case SYS_REMOVE: case SYS_OPEN: case SYS_FILESIZE:
@@ -53,25 +53,38 @@ syscall_handler (struct intr_frame *f)
     {
       valid_pointer(p++);
       args[0] = &p;
-      sys_call[sys_call_num](args[0]);
+      sys_call[sys_call_num] (args[0]);
     }
     case SYS_CREATE: case SYS_SEEK:
     {
       valid_pointer(p++);
       args[1] = &p;
-      sys_call[sys_call_num](args[0], args[1]);
+      sys_call[sys_call_num] (args[0], args[1]);
     }
     case SYS_READ: case SYS_WRITE:
     {
       valid_pointer(p++);
       args[2] = &p;
-      sys_call[sys_call_num](args[0], args[1], args[2]);
+      sys_call[sys_call_num] (args[0], args[1], args[2]);
     }
     default:
     {
       exit_handler ();
     }
   }
-  printf("Call complete.");
+  printf ("Call complete.");
   thread_exit ();
+}
+
+void halt() {
+  exit_handler ();
+}
+
+void exit(int status) {
+  if (status == 0) {
+    printf ("Process terminated successfully with exit code 0.\n");
+  } else {
+    printf ("Process terminated with error code %d", status);
+  }
+  exit_handler ();
 }
