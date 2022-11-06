@@ -43,7 +43,8 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  char *fn = strtok(file_name, " ");
+  tid = thread_create (fn, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -52,23 +53,78 @@ process_execute (const char *file_name)
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
 {
-  char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
+  char *argv[4];
+  char *sp;
+  argv[0] = strtok_r(file_name_, " ", sp);
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  success = load (argv[0], &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
+  palloc_free_page (argv[0]);
   if (!success) 
     thread_exit ();
+  else
+  {
+    /* Basic stack pushing. */
+
+    /* Tokenise file_name and arguments. */
+    void **user_stack_ptr = &if_.esp;
+    int argc = 0;
+    while (argv[argc] != NULL)
+    {
+      argc++;
+      argv[argc] = strtok_r(NULL, " ", sp);
+    }
+
+    void **ptr_addr[4]; /* List of pointer addresses. */
+    /* Push tokens onto stack. */
+    for (int i = 3; i > -1; i--)
+    {
+      if (argv[i] != NULL)
+      {
+        user_stack_ptr -= (strlen(argv[i]) + 1);
+        ptr_addr[i] = user_stack_ptr;
+        *user_stack_ptr = argv[i];
+      }
+    }
+
+    /* Word-alignment. */
+    user_stack_ptr -= (uint32_t) user_stack_ptr % 4;
+
+    /* Push null pointer. */
+    user_stack_ptr--;
+
+    /* Push token addresses onto stack. */
+    for (int i = 3; i > -1; i--)
+    {
+      if (ptr_addr[i] != NULL)
+      {
+        user_stack_ptr--;
+        *user_stack_ptr = ptr_addr[i];
+      }
+    }
+
+    /* Push argv and argc. */
+    int argv_addr = user_stack_ptr;
+    user_stack_ptr--;
+    *user_stack_ptr = argv_addr;
+    user_stack_ptr--;
+    *user_stack_ptr = argc;
+
+    /* Push return address. */
+    user_stack_ptr--;
+    *user_stack_ptr = &if_.eip;
+
+  }
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -456,7 +512,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE - 12;
+        *esp = PHYS_BASE;
       else
         palloc_free_page (kpage);
     }
