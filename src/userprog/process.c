@@ -1,7 +1,3 @@
-#ifndef USERPROG
-#define USERPROG
-#endif
-
 #include "userprog/process.h"
 #include <debug.h>
 #include <inttypes.h>

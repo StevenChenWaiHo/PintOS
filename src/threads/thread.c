@@ -1,7 +1,3 @@
-#ifndef USERPROG
-#define USERPROG
-#endif
-
 #include "threads/thread.h"
 #include <debug.h>
 #include <stddef.h>

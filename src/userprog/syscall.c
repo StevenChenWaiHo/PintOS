@@ -1,7 +1,3 @@
-#ifndef USERPROG
-#define USERPROG
-#endif
-
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include <syscall-nr.h>
@@ -35,9 +31,9 @@ static void exit_handler (void);
 
 /* Function pointer array for system calls. */
 void (*sys_call[SYS_CALL_NUM])(uint32_t *, uint32_t *) = {
-    &halt, &exit, &exec, &wait,
-    &file_create, &file_remove, &open, &filesize,
-    &read, &write, &seek, &tell, &close
+    halt, exit, exec, wait,
+    file_create, file_remove, open, filesize,
+    read, write, seek, tell, close
 };
 
 static void syscall_handler (struct intr_frame *);
