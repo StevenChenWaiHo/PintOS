@@ -34,8 +34,6 @@ valid_pointer (const void *uaddr) {
 
 static void
 exit_handler () {
-  //? Only these two functions?
-  process_exit ();
   thread_exit ();
 }
 
