@@ -22,8 +22,8 @@ void timer_calibrate (void);
 int64_t timer_ticks (void);
 int64_t timer_elapsed (int64_t);
 
-static bool sleep_time_cmp (const struct list_elem *p, const struct list_elem *q, void *aux);
-static void timer_wake(void);
+//static bool sleep_time_cmp (const struct list_elem *p, const struct list_elem *q, void *aux);
+//static void timer_wake(void);
 
 /* Sleep and yield the CPU to other threads. */
 void timer_sleep (int64_t ticks);
