@@ -59,6 +59,7 @@ valid_pointer (const void *uaddr) {
   //? Check for 3 arg fields?
   if (!is_user_vaddr (uaddr)
     || !pagedir_get_page(thread_current ()->pagedir, uaddr)) {
+    printf("Invalid memory access.");
     exit_handler ();
   }
 }
@@ -113,33 +114,36 @@ exec (uint32_t *args, uint32_t *eax UNUSED) {
 
 void
 wait (uint32_t *args, uint32_t *eax UNUSED) {
-
+  pid_t pid = args[0];
 }
 
 void
 file_create (uint32_t *args, uint32_t *eax UNUSED) {
-
+  const char *file = args[0];
+  unsigned size = args[1];
 }
 
 void
 file_remove (uint32_t *args, uint32_t *eax UNUSED) {
-
+  const char *file = args[0];
 }
 
 void
 open (uint32_t *args, uint32_t *eax UNUSED) {
-
+  const char *file = args[0];
 }
 
 void
 filesize (uint32_t *args, uint32_t *eax UNUSED) {
-
+  int fd = args[0];
 }
 
 
 void
 read (uint32_t *args, uint32_t *eax UNUSED) {
-
+  int fd = args[0];
+  void *buffer = args[1];
+  unsigned size = args[2];
 }
 
 void
@@ -155,17 +159,18 @@ write (uint32_t *args, uint32_t *eax) {
 
 void
 seek (uint32_t *args, uint32_t *eax UNUSED) {
-
+  int fd = args[0];
+  unsigned position = args[1];
 }
 
 
 void
 tell (uint32_t *args, uint32_t *eax UNUSED) {
-
+  int fd = args[0];
 }
 
 
 void
 close (uint32_t *args, uint32_t *eax UNUSED) {
-
+  int fd = args[0];
 }
