@@ -44,6 +44,7 @@ process_execute (const char *file_name)
 
   /* Create a new thread to execute FILE_NAME. */
   char *fn = strtok(file_name, " ");
+  /* TODO: Add interrupt disables. */
   tid = thread_create (fn, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
@@ -55,21 +56,19 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
 {
+  char *file_name = strtok(file_name_, " ");
   struct intr_frame if_;
   bool success;
-  char *argv[4];
-  char *sp;
-  argv[0] = strtok_r(file_name_, " ", sp);
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (argv[0], &if_.eip, &if_.esp);
+  success = load (file_name, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
-  palloc_free_page (argv[0]);
+  palloc_free_page (file_name);
   if (!success) 
     thread_exit ();
   else
@@ -77,52 +76,39 @@ start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
     /* Basic stack pushing. */
 
     /* Tokenise file_name and arguments. */
-    void **user_stack_ptr = &if_.esp;
     int argc = 0;
-    while (argv[argc] != NULL)
+    void *argv[4];
+    char *sp;
+    for (char *token = strtok_r(file_name_, " ", sp); token != NULL; token = strtok_r(NULL, " ", sp))
     {
-      argc++;
-      argv[argc] = strtok_r(NULL, " ", sp);
-    }
-
-    void **ptr_addr[4]; /* List of pointer addresses. */
-    /* Push tokens onto stack. */
-    for (int i = 3; i > -1; i--)
-    {
-      if (argv[i] != NULL)
-      {
-        user_stack_ptr -= (strlen(argv[i]) + 1);
-        ptr_addr[i] = user_stack_ptr;
-        *user_stack_ptr = argv[i];
-      }
+      if_.esp -= (strlen(token) + 1);
+      *(char *) if_.esp = token;      /* Push tokens onto stack. */
+      argv[argc++] = if_.esp;         /* Store token pointers. */
     }
 
     /* Word-alignment. */
-    user_stack_ptr -= (uint32_t) user_stack_ptr % 4;
+    if_.esp -= (uint32_t) if_.esp % 4;
 
     /* Push null pointer. */
-    user_stack_ptr--;
+    if_.esp--;
+    *(int *) if_.esp = 0;
 
     /* Push token addresses onto stack. */
-    for (int i = 3; i > -1; i--)
+    for (int i = argc; i >= 0; i--)
     {
-      if (ptr_addr[i] != NULL)
-      {
-        user_stack_ptr--;
-        *user_stack_ptr = ptr_addr[i];
-      }
+      if_.esp--;
+      *(int *) if_.esp = argv[i];
     }
 
     /* Push argv and argc. */
-    int argv_addr = user_stack_ptr;
-    user_stack_ptr--;
-    *user_stack_ptr = argv_addr;
-    user_stack_ptr--;
-    *user_stack_ptr = argc;
+    if_.esp--;
+    *(int *) if_.esp = if_.esp++;
+    if_.esp--;
+    *(int *) if_.esp = argc;
 
     /* Push return address. */
-    user_stack_ptr--;
-    *user_stack_ptr = &if_.eip;
+    if_.esp--;
+    *(int *) if_.esp = 0;             /* Fake return address. */
 
   }
 
