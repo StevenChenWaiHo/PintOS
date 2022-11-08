@@ -39,7 +39,9 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  char *fn = strtok(file_name, " ");
+  /* TODO: Add interrupt disables. */
+  tid = thread_create (fn, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -48,9 +50,9 @@ process_execute (const char *file_name)
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
 {
-  char *file_name = file_name_;
+  char *file_name = strtok(file_name_, " ");
   struct intr_frame if_;
   bool success;
 
@@ -65,6 +67,46 @@ start_process (void *file_name_)
   palloc_free_page (file_name);
   if (!success) 
     thread_exit ();
+  else
+  {
+    /* Basic stack pushing. */
+
+    /* Tokenise file_name and arguments. */
+    int argc = 0;
+    void *argv[4];
+    char *sp;
+    for (char *token = strtok_r(file_name_, " ", sp); token != NULL; token = strtok_r(NULL, " ", sp))
+    {
+      if_.esp -= (strlen(token) + 1);
+      *(char *) if_.esp = token;      /* Push tokens onto stack. */
+      argv[argc++] = if_.esp;         /* Store token pointers. */
+    }
+
+    /* Word-alignment. */
+    if_.esp -= (uint32_t) if_.esp % 4;
+
+    /* Push null pointer. */
+    if_.esp--;
+    *(int *) if_.esp = 0;
+
+    /* Push token addresses onto stack. */
+    for (int i = argc; i >= 0; i--)
+    {
+      if_.esp--;
+      *(int *) if_.esp = argv[i];
+    }
+
+    /* Push argv and argc. */
+    if_.esp--;
+    *(int *) if_.esp = if_.esp++;
+    if_.esp--;
+    *(int *) if_.esp = argc;
+
+    /* Push return address. */
+    if_.esp--;
+    *(int *) if_.esp = 0;             /* Fake return address. */
+
+  }
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -452,7 +494,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
-        *esp = PHYS_BASE - 12;
+        *esp = PHYS_BASE;
       else
         palloc_free_page (kpage);
     }
