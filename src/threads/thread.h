@@ -4,6 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
+#include "threads/synch.h"
 #include "threads/fixed-point.h"
 
 /* States in a thread's life cycle. */
@@ -109,8 +110,9 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
+    struct semaphore sema;
 #endif
-
+    int exit_code;
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
@@ -135,6 +137,7 @@ void thread_unblock (struct thread *);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);
+struct thread *thread_search_tid (tid_t);
 const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;

@@ -15,11 +15,15 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
+#include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#define MAX_ARGS_NO 4
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static void push_arguments(void *esp, int argc, int *argv[]);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -30,6 +34,8 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
+  char *sp;
+  struct thread *t;
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -39,20 +45,26 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  char *fn = strtok_r(fn_copy, " ", &sp);
+  /* TODO: Add interrupt disables. */
+  tid = thread_create (fn, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
+  t = thread_search_tid(tid);
+  sema_down(&t->sema);
   return tid;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_)
+start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
 {
-  char *file_name = file_name_;
+  char *sp;
+  char *file_name = strtok_r(file_name_, " ", &sp);
   struct intr_frame if_;
   bool success;
+  struct thread *cur = thread_current();
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -64,7 +76,24 @@ start_process (void *file_name_)
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) 
+  {
+    sema_up(&cur->sema);
     thread_exit ();
+  }
+  else
+  {    
+    /* Tokenise file_name and arguments. */
+    int argc = 0;
+    int argv[MAX_ARGS_NO];
+    for (char *token = strtok_r(file_name_, " ", &sp); token != NULL; token = strtok_r(NULL, " ", &sp))
+    {
+      if_.esp -= (strlen(token) + 1);
+      memcpy(if_.esp, token, strlen(token) + 1); /* Push tokens onto stack. */
+      argv[argc++] = (int) if_.esp;          /* Store token pointers as int. */
+    }
+    push_arguments(if_.esp, argc, argv);
+    sema_up(&cur->sema);
+  }
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -75,6 +104,36 @@ start_process (void *file_name_)
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
   NOT_REACHED ();
 }
+
+/* Basic stack pushing. */
+static void push_arguments(void *esp, int argc, int argv[])
+{
+    /* Word-alignment. */
+    esp = (void *) ((intptr_t) esp & 0xfffffffc);
+
+    /* Push null pointer. */
+    esp--;
+    *(int *) esp = 0;
+
+    /* Push token addresses onto stack. */
+    for (int i = argc; i >= 0; i--)
+    {
+      esp--;
+      *(int *) esp = (int) argv[i];
+    }
+
+    /* Push argv and argc. */
+    void *argv_pt = esp;
+    esp--;
+    esp = argv_pt;
+    esp--;
+    *(int *) esp = argc;
+
+    /* Push return address. */
+    esp--;
+    *(int *) esp = 0;  /* Fake return address. */
+}
+
 
 /* Waits for thread TID to die and returns its exit status. 
  * If it was terminated by the kernel (i.e. killed due to an exception), 
@@ -88,7 +147,8 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  return -1;
+  //TODO: Change infinite loop to actual process_wait()
+  while(1) {}
 }
 
 /* Free the current process's resources. */

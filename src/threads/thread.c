@@ -320,6 +320,10 @@ thread_create (const char *name, int priority, thread_func *function, void *aux)
   /* Add to run queue. */
   thread_unblock (t);
 
+  #ifdef USERPROG
+    sema_init (&t->sema, 0);
+  #endif
+
   thread_priority_yield();
   return tid;
 }
@@ -396,6 +400,23 @@ thread_tid (void)
   return thread_current ()->tid;
 }
 
+/* Returns the thread from all threads */
+struct thread *
+thread_search_tid (tid_t tid)
+{
+  struct list_elem *e;
+
+  for (e = list_begin (&all_list); e != list_end (&all_list); 
+      e = list_next (e))
+    {
+      struct thread *t = list_entry (e, struct thread, allelem);
+      if (t->tid == tid)
+        return t;
+    }
+    
+  return NULL;
+}
+
 /* Deschedules the current thread and destroys it.  Never
    returns to the caller. */
 void
@@ -407,6 +428,7 @@ thread_exit (void)
   process_exit ();
 #endif
 
+  printf ("%s: exit(%d)\n", thread_name(), thread_current ()->exit_code);
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
