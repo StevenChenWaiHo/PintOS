@@ -9,6 +9,7 @@
 #include "devices/shutdown.h"
 #include "lib/kernel/stdio.h"
 
+<<<<<<< Updated upstream
 #define SYS_CALL_NUM 13
 
 /* System call function prototypes. */
@@ -35,6 +36,10 @@ void (*sys_call[SYS_CALL_NUM])(uint32_t *, uint32_t *) = {
     file_create, file_remove, open, filesize,
     read, write, seek, tell, close
 };
+=======
+static void syscall_handler (struct intr_frame *);
+static void exit_handler ();
+>>>>>>> Stashed changes
 
 static void syscall_handler (struct intr_frame *);
 
@@ -73,7 +78,12 @@ syscall_handler (struct intr_frame *f) {
   uint32_t *return_p = &f->eax;
 
   int arg_count = 1;
+<<<<<<< Updated upstream
   int sys_call_num = *p;
+=======
+  void *p = f->esp;
+  void **sys_call_num = &p;
+>>>>>>> Stashed changes
 
   if (sys_call_num == SYS_HALT)
     sys_call[SYS_HALT] (args, return_p);
