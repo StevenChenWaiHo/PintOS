@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <threads/malloc.h>
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
@@ -19,11 +20,11 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
-#define MAX_ARGS_NO 4
+#define MAX_ARGS_NO 50
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-static void push_arguments(void *esp, int argc, int *argv);
+static int *push_arguments(int *esp, int argc, int *argv);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -45,9 +46,9 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
   /* Create a new thread to execute FILE_NAME. */
-  char *fn = strtok_r(fn_copy, " ", &sp);
+  //char *fn = strtok_r(fn_copy, " ", &sp);
   /* TODO: Add interrupt disables. */
-  tid = thread_create (fn, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   t = thread_search_tid(tid);
@@ -61,7 +62,13 @@ static void
 start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
 {
   char *sp;
-  char *file_name = strtok_r(file_name_, " ", &sp);
+  puts(file_name_);
+  char *file_name = file_name_;
+  puts(file_name);
+  char *fn_copy = malloc(strlen(file_name) + 1);
+  strlcpy(fn_copy, file_name, strlen(file_name) + 1);
+  puts(fn_copy);
+  file_name = strtok_r(file_name, " ", &sp);
   struct intr_frame if_;
   bool success;
   struct thread *cur = thread_current();
@@ -73,7 +80,7 @@ start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
 
-
+  int *start_ptr = if_.esp;
   //palloc_free_page (file_name);
   /* If load failed, quit. */
   if (!success) 
@@ -86,18 +93,31 @@ start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
     /* Tokenise file_name and arguments. */
     int argc = 0;
     int argv[MAX_ARGS_NO];
-    for (char *token = strtok_r(file_name_, " ", &sp); token != NULL; token = strtok_r(NULL, " ", &sp))
+    puts(fn_copy);
+    char *token = strtok_r(fn_copy, " ", &sp);
+    puts(token);
+    printf("%d\n", strlen(token));
+    while (token != NULL)
+    //for (char *token = strtok_r(fn_copy, " ", &sp); token != NULL; token = strtok_r(NULL, " ", &sp))
     {
-      if_.esp -= (strlen(token) + 1);
-      memcpy(if_.esp, token, strlen(token) + 1); /* Push tokens onto stack. */
-      printf("hi\n");
+      if_.esp -= (strlen(token));
+      printf("%x\n", if_.esp);
+      memcpy(if_.esp, token, strlen(token)); /* Push tokens onto stack. */
+      //printf("hi\n");
       argv[argc++] = (int) if_.esp;          /* Store token pointers as int. */
+      printf("argv of argc:%d = %x\n", argc, argv[argc]);
+
+      token = strtok_r(NULL, " ", &sp);
     }
-    push_arguments(if_.esp, argc, argv);
-          printf("hi\n");
+    if_.esp = (void *) push_arguments((int *)if_.esp, argc, argv);
+
+    hex_dump(start_ptr - 24, start_ptr - 24, 96, true);
+
+    printf("%x\n", if_.esp);
+    //printf("hi\n");
     //sema_up(&cur->sema);
   }
-        printf("hi\n");
+  palloc_free_page(file_name);
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -109,9 +129,8 @@ start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
 }
 
 /* Basic stack pushing. */
-static void push_arguments(void *esp, int argc, int argv[])
+static int *push_arguments(int *esp, int argc, int argv[])
 {
-  void *start_ptr = esp;
     /* Word-alignment. */
     esp = (void *) ((intptr_t) esp & 0xfffffffc);
 
@@ -119,15 +138,18 @@ static void push_arguments(void *esp, int argc, int argv[])
     esp--;
     *(int *) esp = 0;
 
+    printf("%x\n", esp);
+
     /* Push token addresses onto stack. */
     for (int i = argc - 1; i >= 0; i--)
     {
       esp--;
       *(int *) esp = (int) argv[i];
+      printf("%x\n", esp);
     }
 
     /* Push argv and argc. */
-    void *argv_pt = esp;
+    int *argv_pt = esp;
     esp--;
     esp = argv_pt;
     esp--;
@@ -137,7 +159,7 @@ static void push_arguments(void *esp, int argc, int argv[])
     esp--;
     *(int *) esp = 0;  /* Fake return address. */
 
-    hex_dump(0, start_ptr, 256, true);
+    return esp;
 }
 
 
