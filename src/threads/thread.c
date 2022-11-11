@@ -216,6 +216,10 @@ thread_create (const char *name, int priority,
   /* Add to run queue. */
   thread_unblock (t);
 
+  #ifdef USERPROG
+    sema_init (&t->sema, 0);
+  #endif
+
   return tid;
 }
 
@@ -288,6 +292,23 @@ tid_t
 thread_tid (void) 
 {
   return thread_current ()->tid;
+}
+
+/* Returns the thread from all threads */
+struct thread *
+thread_search_tid (tid_t tid)
+{
+  struct list_elem *e;
+
+  for (e = list_begin (&all_list); e != list_end (&all_list); 
+      e = list_next (e))
+    {
+      struct thread *t = list_entry (e, struct thread, allelem);
+      if (t->tid == tid)
+        return t;
+    }
+    
+  return NULL;
 }
 
 /* Deschedules the current thread and destroys it.  Never
