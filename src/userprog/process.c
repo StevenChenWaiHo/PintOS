@@ -23,7 +23,7 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-static void push_arguments(void *esp, int argc, int *argv[]);
+static void push_arguments(void *esp, int argc, int argv[]);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -108,6 +108,7 @@ start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
 /* Basic stack pushing. */
 static void push_arguments(void *esp, int argc, int argv[])
 {
+  void *start_ptr = esp;
     /* Word-alignment. */
     esp = (void *) ((intptr_t) esp & 0xfffffffc);
 
@@ -132,6 +133,8 @@ static void push_arguments(void *esp, int argc, int argv[])
     /* Push return address. */
     esp--;
     *(int *) esp = 0;  /* Fake return address. */
+
+    hex_dump(0, start_ptr, 256, true);
 }
 
 
