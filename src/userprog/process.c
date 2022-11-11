@@ -23,7 +23,7 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-static void push_arguments(void *esp, int argc, int *argv[]);
+static void push_arguments(void *esp, int argc, int *argv);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -51,7 +51,7 @@ process_execute (const char *file_name)
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   t = thread_search_tid(tid);
-  sema_down(&t->sema);
+  //sema_down(&t->sema);
   return tid;
 }
 
@@ -73,11 +73,12 @@ start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
 
+
+  //palloc_free_page (file_name);
   /* If load failed, quit. */
-  palloc_free_page (file_name);
   if (!success) 
   {
-    sema_up(&cur->sema);
+    //sema_up(&cur->sema);
     thread_exit ();
   }
   else
@@ -89,12 +90,14 @@ start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
     {
       if_.esp -= (strlen(token) + 1);
       memcpy(if_.esp, token, strlen(token) + 1); /* Push tokens onto stack. */
+      printf("hi\n");
       argv[argc++] = (int) if_.esp;          /* Store token pointers as int. */
     }
     push_arguments(if_.esp, argc, argv);
-    sema_up(&cur->sema);
+          printf("hi\n");
+    //sema_up(&cur->sema);
   }
-
+        printf("hi\n");
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -116,7 +119,7 @@ static void push_arguments(void *esp, int argc, int argv[])
     *(int *) esp = 0;
 
     /* Push token addresses onto stack. */
-    for (int i = argc; i >= 0; i--)
+    for (int i = argc - 1; i >= 0; i--)
     {
       esp--;
       *(int *) esp = (int) argv[i];

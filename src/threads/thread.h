@@ -97,9 +97,9 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
-    struct semaphore sema;
 #endif
     int exit_code;
+    struct semaphore sema;
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
