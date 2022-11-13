@@ -65,12 +65,19 @@ valid_pointer (const void *uaddr) {
 }
 
 static void
-syscall_handler (struct intr_frame *f) {
-  valid_pointer(f->esp);
+return_func (int sys_call_num) {
+  
+}
 
+static void
+syscall_handler (struct intr_frame *f) {
+  
+  valid_pointer(f->esp);
   uint32_t args[3] = {0};
   uint32_t *p = f->esp;
-  uint32_t *return_p = &f->eax;
+  uint32_t *return_p = &(f->eax);
+
+  //hex_dump(p - 24, p - 24, 96, true);
 
   int arg_count = 1;
   int sys_call_num = *p;
@@ -89,9 +96,15 @@ syscall_handler (struct intr_frame *f) {
   }
 
   sys_call[sys_call_num] (args, return_p);
+  /*
+  
+  if (return_func(sys_call_num)) {
+    f->eax = *return_p;
+  }
+  */
 
-  printf ("Call complete.");
-  thread_exit ();
+  //printf ("Call type of %d complete.\n", sys_call_num);
+  //thread_exit ();
 }
 
 void
@@ -103,6 +116,7 @@ halt (uint32_t *args UNUSED, uint32_t *eax UNUSED) {
 void
 exit (uint32_t *args, uint32_t *eax UNUSED) {
   thread_current ()->exit_code = args[0];
+  printf ("%s: exit(%d)\n", thread_name(), thread_current ()->exit_code);
   exit_handler ();
   NOT_REACHED ();
 }
