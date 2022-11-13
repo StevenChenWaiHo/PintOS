@@ -48,7 +48,25 @@ process_execute (const char *file_name)
   /* Create a new thread to execute FILE_NAME. */
   //char *fn = strtok_r(fn_copy, " ", &sp);
   /* TODO: Add interrupt disables. */
+  /* WAIT: malloc child_thread_coordinator */
+  struct child_thread_coord *child = malloc(sizeof(struct child_thread_coord));
+  sema_init(&child->sema, 0);
+  if (!child) {
+    perror("cannot allocate child_thread_coord");
+  }
+  list_push_front(&thread_current()->children, &child->child_elem);
+  /* WAIT: End of child_thread_coordinator additions */
+
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  /* WAIT: block parent thread, until success/failure of child loading executable is confirmed.
+   * start process will call set tid, then call sema_up to unblock thread */
+ sema_down(&child->sema);
+ /* receives child thread tid */
+ if (child->tid == -1) {
+
+ }
+
+  //thread tid may be scheduled immedeately here???
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   t = thread_search_tid(tid);
@@ -167,8 +185,30 @@ static int *push_arguments(int *esp, int argc, int argv[])
 int
 process_wait (tid_t child_tid UNUSED) 
 {
-  //TODO: Change infinite loop to actual process_wait()
-  while(1) {}
+  struct child_thread_coord *child_coord = NULL;
+  struct list children = thread_current()->children;
+  /* Verify child, chid thread must be 1. direct childeren (threads waited on will be removed from list) */
+  struct list_elem *child = list_begin(&children);
+  while(list_end(&children) != child) {
+    if (list_entry(child, struct child_thread_coord, child_elem)->tid == child_tid) {
+      child_coord = list_entry(child, struct child_thread_coord, child_elem);
+      break;
+    }
+    child = child->next;
+  }
+  if (child_coord == NULL) {
+    return -1;
+  }
+  /* child thread may terminate before sema down (calls sema_up), so sema_down will not block parent thread */
+  /* find the child_thread_coord to sema down thread_current() */
+  sema_down(&child_coord->sema);
+  /* somehow sema is 0, parent thread is unblocked */
+  int ret = child_coord->exit_status;
+  /* TODO: synchronisation */
+  if (child_coord->child_is_terminated == true) {
+    free(child_coord);
+  }
+  return ret;
 }
 
 /* Free the current process's resources. */

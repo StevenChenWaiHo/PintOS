@@ -96,13 +96,24 @@ struct thread
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /* Page directory. */
+    uint32_t *pagedir;                                /* Page directory. */
+    struct child_thread_coord *child_thread_coord;    /* child thread's child thread coordinator */
+    struct list children;                             /* children of parent thread */
 #endif
     int exit_code;
     struct semaphore sema;
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
+  struct child_thread_coord
+   {
+      tid_t tid;                       /* child thread's tid */
+      int exit_status;                 /* exit status of child thread 0 for success */
+      struct semaphore sema;           /* blocks parent thread if parent waits for child */
+      bool parent_is_terminated;
+      bool child_is_terminated;
+      struct list_elem child_elem;     /* list elem for list children in parent process */
+   };
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.

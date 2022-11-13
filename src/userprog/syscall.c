@@ -11,6 +11,8 @@
 
 #define SYS_CALL_NUM 13
 
+#define HANDLER_GET_ARG();
+
 /* System call function prototypes. */
 void halt        (uint32_t *, uint32_t *) NO_RETURN;
 void exit        (uint32_t *, uint32_t *) NO_RETURN;
@@ -129,6 +131,7 @@ exec (uint32_t *args, uint32_t *eax UNUSED) {
 void
 wait (uint32_t *args, uint32_t *eax UNUSED) {
   pid_t pid = args[0];
+  int ret = process_wait(pid);
 }
 
 void
