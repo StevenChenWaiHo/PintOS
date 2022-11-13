@@ -132,7 +132,9 @@ file_create (uint32_t *args, uint32_t *eax) {
   unsigned size = args[1];
 
   valid_pointer (file);
-
+  if (file[0] == '\0') {
+    exit_handler (-1);
+  }
   lock_acquire (&file_l);
   *eax = (uint32_t) filesys_create (file, size);
   lock_release (&file_l);

@@ -217,9 +217,9 @@ thread_create (const char *name, int priority,
   thread_unblock (t);
 
   #ifdef USERPROG
-    sema_init (&t->sema, 0);
+    list_init (&t->fd_ref);
+    t->curr_fd = 2;
   #endif
-
   return tid;
 }
 
@@ -322,7 +322,6 @@ thread_exit (void)
   process_exit ();
 #endif
 
-  printf ("%s: exit(%d)\n", thread_name(), thread_current ()->exit_code);
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */

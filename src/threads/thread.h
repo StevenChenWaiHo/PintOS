@@ -99,9 +99,17 @@ struct thread
     uint32_t *pagedir;                  /* Page directory. */
 #endif
     int exit_code;
-    struct semaphore sema;
+    int curr_fd;
+    struct list fd_ref;
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+  };
+
+struct fd_elem_struct
+  {
+    int fd;
+    struct file *file_ref;
+    struct list_elem fd_elem;
   };
 
 /* If false (default), use round-robin scheduler.
