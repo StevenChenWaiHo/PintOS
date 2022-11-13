@@ -57,7 +57,11 @@ process_execute (const char *file_name)
   }
   list_push_front(&thread_current()->children, &child->child_elem);
 
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  /* define var information to pass to start_process */
+  struct information *info = malloc(sizeof(struct information));
+  info->filename = fn_copy;
+  info->child_thread_coord = child;
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, info);
   if (tid == TID_ERROR) {
     palloc_free_page (fn_copy); 
     //sema_down(&t->sema);
@@ -78,11 +82,22 @@ process_execute (const char *file_name)
   return tid;  
 }
 
+void *get_file_from_info (struct information *info){
+  return info->filename;
+}
+
+struct child_thread_coord* get_coord_from_info (struct information *info){
+  return info->child_thread_coord;
+}
+
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
+start_process (void *info) /* TODO: Change file_name_ name to argv. */
 {
+  struct infomation *information = ((struct information *) info);
+  void *file_name_ = get_file_from_info(info);
+  thread_current()->child_thread_coord = get_coord_from_info(info);
   char *sp;
   char *file_name = file_name_;
   char *fn_copy = malloc(strlen(file_name) + 1);
@@ -201,9 +216,12 @@ process_wait (tid_t child_tid)
 {
   struct child_thread_coord *child_coord = NULL;
   struct list children = thread_current()->children;
+
   /* Verify child, chid thread must be direct childeren (threads waited on will be removed from list) */
+  
+  enum intr_level old_level = intr_disable ();
   if (!list_empty(&children)){
-    struct list_elem *child = list_begin(&children);
+    struct list_elem *child = list_front(&children);
     while(child != list_end(&children)) {
       if (list_entry(child, struct child_thread_coord, child_elem)->tid == child_tid) {
         child_coord = list_entry(child, struct child_thread_coord, child_elem);
@@ -212,6 +230,7 @@ process_wait (tid_t child_tid)
       child = list_next(child);
     }
   }
+  intr_set_level (old_level);
   
   if (child_coord == NULL) {
     return -1;
@@ -260,10 +279,8 @@ process_exit (void)
          directory, or our active page directory will be one
          that's been freed (and cleared). */
       cur->pagedir = NULL;
-      ASSERT(false);
       pagedir_activate (NULL);
       pagedir_destroy (pd);
-      ASSERT(false);
     }
 
   sema_up(&cur->child_thread_coord->sema);

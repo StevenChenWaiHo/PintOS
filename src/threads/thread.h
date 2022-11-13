@@ -101,7 +101,7 @@ struct thread
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                                /* Page directory. */
     struct child_thread_coord *child_thread_coord;    /* child thread's child thread coordinator */
-   //  struct list children;                             /* children of parent thread */
+   //  struct list children;                          /* children of parent thread */
 #endif
     int exit_code;
     struct semaphore sema;

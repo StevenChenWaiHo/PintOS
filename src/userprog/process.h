@@ -3,6 +3,11 @@
 
 #include "threads/thread.h"
 
+struct information {
+  char *filename;
+  struct child_thread_coord *child_thread_coord; 
+};
+
 tid_t process_execute (const char *file_name);
 int process_wait (tid_t);
 void process_exit (void);
