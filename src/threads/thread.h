@@ -105,7 +105,8 @@ struct thread
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
-  struct child_thread_coord
+
+    struct child_thread_coord
    {
       tid_t tid;                       /* child thread's tid */
       int exit_status;                 /* exit status of child thread 0 for success */

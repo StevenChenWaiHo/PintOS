@@ -34,7 +34,7 @@ tid_t
 process_execute (const char *file_name) 
 {
   char *fn_copy;
-  tid_t tid;
+  tid_t tid = TID_ERROR;
   char *sp;
   struct thread *t;
 
@@ -48,30 +48,34 @@ process_execute (const char *file_name)
   /* Create a new thread to execute FILE_NAME. */
   //char *fn = strtok_r(fn_copy, " ", &sp);
   /* TODO: Add interrupt disables. */
+  
   /* WAIT: malloc child_thread_coordinator */
   struct child_thread_coord *child = malloc(sizeof(struct child_thread_coord));
   sema_init(&child->sema, 0);
   if (!child) {
-    perror("cannot allocate child_thread_coord");
+    printf("cannot allocate child_thread_coord\n");
   }
   list_push_front(&thread_current()->children, &child->child_elem);
-  /* WAIT: End of child_thread_coordinator additions */
 
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
-  /* WAIT: block parent thread, until success/failure of child loading executable is confirmed.
-   * start process will call set tid, then call sema_up to unblock thread */
- sema_down(&child->sema);
- /* receives child thread tid */
- if (child->tid == -1) {
-
- }
-
-  //thread tid may be scheduled immedeately here???
-  if (tid == TID_ERROR)
+  if (tid != TID_ERROR) {
     palloc_free_page (fn_copy); 
-  t = thread_search_tid(tid);
-  //sema_down(&t->sema);
-  return tid;
+    //sema_down(&t->sema);
+    return TID_ERROR;
+  }
+  /* WAIT: block parent thread, until success/failure of child loading executable is confirmed.
+  * start process will call set tid, then call sema_up to unblock thread */
+  sema_down(&child->sema);
+  /* receives child thread tid */
+  if (child->tid == TID_ERROR) {
+    if (thread_current()->child_thread_coord->parent_is_terminated) {
+      free(thread_current()->child_thread_coord);
+    }else{
+      thread_current()->child_thread_coord->parent_is_terminated = true;
+    }
+  return TID_ERROR;
+  }
+  return tid;  
 }
 
 /* A thread function that loads a user process and starts it
@@ -101,6 +105,13 @@ start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
   if (!success) 
   {
     //sema_up(&cur->sema);
+    /* WAIT: child fails to allocate, remove child from parent's children and return exit status */
+    thread_current()->child_thread_coord->tid = TID_ERROR;
+    thread_current()->child_thread_coord->exit_status = -1;
+    list_remove(&thread_current()->child_thread_coord->child_elem);
+    thread_current()->child_thread_coord->child_is_terminated = true;
+    sema_up(&thread_current()->child_thread_coord->sema);
+    /* WAIT: additions ends here */
     thread_exit ();
   }
   else
@@ -204,7 +215,9 @@ process_wait (tid_t child_tid UNUSED)
   sema_down(&child_coord->sema);
   /* somehow sema is 0, parent thread is unblocked */
   int ret = child_coord->exit_status;
+  list_remove(child);
   /* TODO: synchronisation */
+  
   if (child_coord->child_is_terminated == true) {
     free(child_coord);
   }
@@ -217,6 +230,8 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+		sema_up(&cur->child_thread_coord->sema);
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
