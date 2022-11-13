@@ -59,7 +59,7 @@ process_execute (const char *file_name)
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
+start_process (void *file_name_)
 {
   char *sp;
   char *file_name = file_name_;
@@ -77,16 +77,12 @@ start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
 
-  int *start_ptr = if_.esp;
-  //palloc_free_page (file_name);
   /* If load failed, quit. */
-  if (!success) 
-  {
+  if (!success) {
+    palloc_free_page (file_name);
     //sema_up(&cur->sema);
     thread_exit ();
-  }
-  else
-  {    
+  } else {
     /* Tokenise file_name and arguments. */
     int argc = 0;
     int argv[MAX_ARGS_NO];
@@ -103,13 +99,12 @@ start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
       token = strtok_r(NULL, " ", &sp);
     }
     if_.esp = (void *) push_arguments((int *)if_.esp, argc, argv);
-
+    
     //hex_dump(start_ptr - 24, start_ptr - 24, 96, true);
     //printf("%x\n", if_.esp);
     //sema_up(&cur->sema);
   }
-  palloc_free_page(file_name);
-
+  palloc_free_page (file_name);
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its

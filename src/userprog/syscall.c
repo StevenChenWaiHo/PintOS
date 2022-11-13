@@ -2,7 +2,9 @@
 #include <stdio.h>
 #include <syscall-nr.h>
 #include "filesys/filesys.h"
+#include "filesys/file.h"
 #include "threads/interrupt.h"
+#include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "pagedir.h"
@@ -30,6 +32,7 @@ void tell        (uint32_t *, uint32_t *);
 void close       (uint32_t *, uint32_t *);
 
 void syscall_init (void);
+static struct file *fd_search (int);
 static void exit_handler (int);
 
 /* Function pointer array for system calls. */
@@ -128,7 +131,7 @@ file_create (uint32_t *args, uint32_t *eax) {
   const char *file = args[0];
   unsigned size = args[1];
 
-  valid_pointer(file);
+  valid_pointer (file);
 
   lock_acquire (&file_l);
   *eax = (uint32_t) filesys_create (file, size);
@@ -136,10 +139,10 @@ file_create (uint32_t *args, uint32_t *eax) {
 }
 
 void
-file_remove (uint32_t *args, uint32_t *eax UNUSED) {
+file_remove (uint32_t *args, uint32_t *eax) {
   const char *file = args[0];
 
-  valid_pointer(file);
+  valid_pointer (file);
 
   lock_acquire (&file_l);
   *eax = (uint32_t) filesys_remove(file);
@@ -147,13 +150,39 @@ file_remove (uint32_t *args, uint32_t *eax UNUSED) {
 }
 
 void
-open (uint32_t *args, uint32_t *eax UNUSED) {
+open (uint32_t *args, uint32_t *eax) {
   const char *file = args[0];
+
+  valid_pointer (file);
+
+  lock_acquire (&file_l);
+  struct file *fp = (uint32_t) filesys_open(file);
+  lock_release (&file_l);
+
+  if (!fp) {
+    *eax = -1;
+  } else {
+    struct fd_elem_struct *fd_pair = malloc (sizeof (struct fd_elem_struct));
+    fd_pair->fd = thread_current ()->curr_fd++;
+    fd_pair->file_ref = fp;
+    list_push_front (&thread_current ()->fd_ref, &fd_pair->fd_elem);
+    *eax = fd_pair->fd;
+  }
 }
 
 void
-filesize (uint32_t *args, uint32_t *eax UNUSED) {
+filesize (uint32_t *args, uint32_t *eax) {
   int fd = args[0];
+  if (fd > 2) {
+    struct file *fp = fd_search (fd);
+    if (fp) {
+      lock_acquire (&file_l);
+      *eax = file_length (fp);
+      lock_release (&file_l);
+      return;
+    }
+  }
+  *eax = -1;
 }
 
 
@@ -193,4 +222,18 @@ tell (uint32_t *args, uint32_t *eax UNUSED) {
 void
 close (uint32_t *args, uint32_t *eax UNUSED) {
   int fd = args[0];
+}
+
+static struct file *fd_search (int id) {
+  struct list_elem *e;
+  struct list *fd_ref_list = &thread_current()->fd_ref;
+
+  for (e = list_begin (fd_ref_list); e != list_end (fd_ref_list);
+       e = list_next (e)) {
+    struct fd_elem_struct *curr = 
+      list_entry (e, struct fd_elem_struct, fd_elem);
+    if (curr->fd == id)
+      return curr->file_ref;
+  }
+  return NULL;
 }
