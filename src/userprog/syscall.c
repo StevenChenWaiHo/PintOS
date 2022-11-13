@@ -118,6 +118,7 @@ halt (uint32_t *args UNUSED, uint32_t *eax UNUSED) {
 void
 exit (uint32_t *args, uint32_t *eax UNUSED) {
   thread_current ()->exit_code = args[0];
+  
   printf ("%s: exit(%d)\n", thread_name(), thread_current ()->exit_code);
   exit_handler ();
   NOT_REACHED ();
@@ -131,7 +132,7 @@ exec (uint32_t *args, uint32_t *eax UNUSED) {
 void
 wait (uint32_t *args, uint32_t *eax UNUSED) {
   pid_t pid = args[0];
-  int ret = process_wait(pid);
+  *eax = process_wait(pid);
 }
 
 void

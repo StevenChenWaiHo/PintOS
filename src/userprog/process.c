@@ -58,7 +58,7 @@ process_execute (const char *file_name)
   list_push_front(&thread_current()->children, &child->child_elem);
 
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
-  if (tid != TID_ERROR) {
+  if (tid == TID_ERROR) {
     palloc_free_page (fn_copy); 
     //sema_down(&t->sema);
     return TID_ERROR;
@@ -136,6 +136,9 @@ start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
     hex_dump(start_ptr - 24, start_ptr - 24, 96, true);
     //printf("%x\n", if_.esp);
     //sema_up(&cur->sema);
+
+    //set coord tid
+    //sema_up()
   }
   palloc_free_page(file_name);
 
@@ -194,19 +197,22 @@ static int *push_arguments(int *esp, int argc, int argv[])
  * This function will be implemented in task 2.
  * For now, it does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
   struct child_thread_coord *child_coord = NULL;
   struct list children = thread_current()->children;
-  /* Verify child, chid thread must be 1. direct childeren (threads waited on will be removed from list) */
-  struct list_elem *child = list_begin(&children);
-  while(list_end(&children) != child) {
-    if (list_entry(child, struct child_thread_coord, child_elem)->tid == child_tid) {
-      child_coord = list_entry(child, struct child_thread_coord, child_elem);
-      break;
+  /* Verify child, chid thread must be direct childeren (threads waited on will be removed from list) */
+  if (!list_empty(&children)){
+    struct list_elem *child = list_begin(&children);
+    while(child != list_end(&children)) {
+      if (list_entry(child, struct child_thread_coord, child_elem)->tid == child_tid) {
+        child_coord = list_entry(child, struct child_thread_coord, child_elem);
+        break;
+      }
+      child = list_next(child);
     }
-    child = child->next;
   }
+  
   if (child_coord == NULL) {
     return -1;
   }
@@ -215,7 +221,7 @@ process_wait (tid_t child_tid UNUSED)
   sema_down(&child_coord->sema);
   /* somehow sema is 0, parent thread is unblocked */
   int ret = child_coord->exit_status;
-  list_remove(child);
+  list_remove(&child_coord->child_elem);
   /* TODO: synchronisation */
   
   if (child_coord->child_is_terminated == true) {
@@ -231,12 +237,20 @@ process_exit (void)
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
-		sema_up(&cur->child_thread_coord->sema);
+		/* unblocks parent thread if parent thread waiting for current thread */
+    cur->child_thread_coord->exit_status = cur->exit_code;
+    
+    /* free all the child coord which child has have terminated */
+    for (struct list_elem *e = list_begin(&thread_current()->children); e != list_end(&thread_current()->children); e = list_next(e)) {
+      if (list_entry(e, struct child_thread_coord, child_elem)->child_is_terminated) {
+        free(e);
+      }
+    }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
-  if (pd != NULL) 
+  if (pd != NULL)
     {
       /* Correct ordering here is crucial.  We must set
          cur->pagedir to NULL before switching page directories,
@@ -246,9 +260,13 @@ process_exit (void)
          directory, or our active page directory will be one
          that's been freed (and cleared). */
       cur->pagedir = NULL;
+      ASSERT(false);
       pagedir_activate (NULL);
       pagedir_destroy (pd);
+      ASSERT(false);
     }
+
+  sema_up(&cur->child_thread_coord->sema);
 }
 
 /* Sets up the CPU for running user code in the current
