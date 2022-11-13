@@ -104,7 +104,7 @@ start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
     }
     if_.esp = (void *) push_arguments((int *)if_.esp, argc, argv);
 
-    hex_dump(start_ptr - 24, start_ptr - 24, 96, true);
+    //hex_dump(start_ptr - 24, start_ptr - 24, 96, true);
     //printf("%x\n", if_.esp);
     //sema_up(&cur->sema);
   }

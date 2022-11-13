@@ -1,6 +1,7 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include <syscall-nr.h>
+#include "filesys/filesys.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
@@ -10,6 +11,8 @@
 #include "lib/kernel/stdio.h"
 
 #define SYS_CALL_NUM 13
+
+struct lock file_l;
 
 /* System call function prototypes. */
 void halt        (uint32_t *, uint32_t *) NO_RETURN;
@@ -27,7 +30,7 @@ void tell        (uint32_t *, uint32_t *);
 void close       (uint32_t *, uint32_t *);
 
 void syscall_init (void);
-static void exit_handler (void);
+static void exit_handler (int);
 
 /* Function pointer array for system calls. */
 void (*sys_call[SYS_CALL_NUM])(uint32_t *, uint32_t *) = {
@@ -41,12 +44,14 @@ static void syscall_handler (struct intr_frame *);
 void
 syscall_init (void) 
 {
-  //TODO: Implement stack initialization
+  lock_init (&file_l);
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
 static void
-exit_handler (void) {
+exit_handler (int status) {
+  thread_current ()->exit_code = status;
+  printf ("%s: exit(%d)\n", thread_name(), thread_current ()->exit_code);
   thread_exit ();
   NOT_REACHED ();
 }
@@ -56,17 +61,11 @@ exit_handler (void) {
  *  and kills the current thread. */
 static void
 valid_pointer (const void *uaddr) {
-  //? Check for 3 arg fields?
   if (!is_user_vaddr (uaddr)
     || !pagedir_get_page(thread_current ()->pagedir, uaddr)) {
-    printf("Invalid memory access.");
-    exit_handler ();
+    printf("Invalid memory access.\n");
+    exit_handler (-1);
   }
-}
-
-static void
-return_func (int sys_call_num) {
-  
 }
 
 static void
@@ -95,16 +94,10 @@ syscall_handler (struct intr_frame *f) {
     args[i] = *p;
   }
 
+  //printf("Executing sys_call %d\n", sys_call_num);
   sys_call[sys_call_num] (args, return_p);
-  /*
-  
-  if (return_func(sys_call_num)) {
-    f->eax = *return_p;
-  }
-  */
 
   //printf ("Call type of %d complete.\n", sys_call_num);
-  //thread_exit ();
 }
 
 void
@@ -115,9 +108,7 @@ halt (uint32_t *args UNUSED, uint32_t *eax UNUSED) {
 
 void
 exit (uint32_t *args, uint32_t *eax UNUSED) {
-  thread_current ()->exit_code = args[0];
-  printf ("%s: exit(%d)\n", thread_name(), thread_current ()->exit_code);
-  exit_handler ();
+  exit_handler ((int) args[0]);
   NOT_REACHED ();
 }
 
@@ -132,14 +123,27 @@ wait (uint32_t *args, uint32_t *eax UNUSED) {
 }
 
 void
-file_create (uint32_t *args, uint32_t *eax UNUSED) {
+file_create (uint32_t *args, uint32_t *eax) {
+  //printf("Creating file...");
   const char *file = args[0];
   unsigned size = args[1];
+
+  valid_pointer(file);
+
+  lock_acquire (&file_l);
+  *eax = (uint32_t) filesys_create (file, size);
+  lock_release (&file_l);
 }
 
 void
 file_remove (uint32_t *args, uint32_t *eax UNUSED) {
   const char *file = args[0];
+
+  valid_pointer(file);
+
+  lock_acquire (&file_l);
+  *eax = (uint32_t) filesys_remove(file);
+  lock_release (&file_l);
 }
 
 void
@@ -162,9 +166,11 @@ read (uint32_t *args, uint32_t *eax UNUSED) {
 
 void
 write (uint32_t *args, uint32_t *eax) {
+  //printf("Writing...\n");
   int fd = args[0];
   const void *buffer = (void *) args[1];
   unsigned size = args[2];
+  //valid_pointer(&buffer);
   if (fd == 1) {
     putbuf (buffer, size);
   }
