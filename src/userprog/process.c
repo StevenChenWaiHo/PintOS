@@ -109,13 +109,13 @@ static void
 start_process (void *param_struct) /* TODO: Change file_name_ name to argv. */
 {
   struct start_process_param *param = param_struct;
-  void *file_name_ = get_file_from_info(param);
+  void *file_name = get_file_from_info(param);
   thread_current()->child_thread_coord = get_coord_from_info(param);
   char *sp;
-  char *file_name = file_name_;
   char *fn_copy = malloc(strlen(file_name) + 1);
   strlcpy(fn_copy, file_name, strlen(file_name) + 1);
   file_name = strtok_r(file_name, " ", &sp);
+  strlcpy(thread_current()->name, file_name, strlen(file_name) + 1);
   struct intr_frame if_;
   bool success;
 
@@ -131,7 +131,6 @@ start_process (void *param_struct) /* TODO: Change file_name_ name to argv. */
   /* If load failed, quit. */
   if (!success) 
   {
-    printf("Start Process ERROR: %d", thread_current()->tid);
     // sema_up(&cur->sema);
     /* WAIT: child fails to allocate, remove child from parent's children and return exit status */
     thread_current()->child_thread_coord->tid = TID_ERROR;

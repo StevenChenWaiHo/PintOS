@@ -56,7 +56,8 @@ syscall_init (void)
 void
 exit_handler (int status) {
   thread_current ()->exit_code = status;
-  printf ("%s: exit(%d)\n", thread_name(), thread_current ()->exit_code);
+  thread_current ()->child_thread_coord->exit_status = status;
+  printf("%s: exit(%d)\n", thread_name(), thread_current()->exit_code);
   thread_exit ();
   NOT_REACHED ();
 }
@@ -68,7 +69,6 @@ static void
 valid_pointer (const void *uaddr) {
   if (!is_user_vaddr (uaddr)
     || !pagedir_get_page(thread_current ()->pagedir, uaddr)) {
-    printf("Invalid memory access.\n");
     exit_handler (-1);
   }
 }
@@ -79,11 +79,6 @@ syscall_handler (struct intr_frame *f) {
   uint32_t args[3] = {0};
   uint32_t *p = f->esp;
   uint32_t *return_p = &(f->eax);
-
-  //printf("%x\n", p);
-
-  //hex_dump(p, p, 96, true);
-
 
   int arg_count = 1;
   int sys_call_num = *p;
@@ -101,10 +96,7 @@ syscall_handler (struct intr_frame *f) {
     args[i] = *p;
   }
 
-  //printf("Executing sys_call %d\n", sys_call_num);
   sys_call[sys_call_num] (args, return_p);
-
-  //printf ("Call type of %d complete.\n", sys_call_num);
 }
 
 void
@@ -133,7 +125,6 @@ wait (uint32_t *args, uint32_t *eax UNUSED) {
 
 void
 file_create (uint32_t *args, uint32_t *eax) {
-  //printf("Creating file...");
   const char *file = args[0];
   unsigned size = args[1];
 
@@ -174,7 +165,6 @@ open (uint32_t *args, uint32_t *eax) {
     fd_pair->fd = thread_current ()->curr_fd++;
     fd_pair->file_ref = fp;
     list_push_front (&thread_current ()->fd_ref, &fd_pair->fd_elem);
-    //printf("Opening fd %d\n", fd_pair->fd);
     *eax = fd_pair->fd;
   }
 
@@ -224,7 +214,6 @@ read (uint32_t *args, uint32_t *eax) {
 
 void
 write (uint32_t *args, uint32_t *eax) {
-  //printf("Writing...\n");
   int fd = args[0];
   const void *buffer = (void *) args[1];
   off_t size = args[2];
@@ -289,7 +278,6 @@ static struct fd_elem_struct *fd_search_struct (int fd) {
     if (curr->fd == fd)
       return curr;
   }
-  printf ("There's no such file.");
   exit_handler (-1);
   NOT_REACHED ();
 }
