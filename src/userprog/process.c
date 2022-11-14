@@ -46,8 +46,6 @@ process_execute (const char *file_name)
   strlcpy (fn_copy, file_name, PGSIZE);
 
   /* Create a new thread to execute FILE_NAME. */
-  //char *fn = strtok_r(fn_copy, " ", &sp);
-  /* TODO: Add interrupt disables. */
   tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
@@ -83,6 +81,7 @@ start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
   if (!success) 
   {
     //sema_up(&cur->sema);
+    printf("load failed\n");
     thread_exit ();
   }
   else
@@ -169,6 +168,7 @@ process_wait (tid_t child_tid UNUSED)
 {
   //TODO: Change infinite loop to actual process_wait()
   while(1) {}
+  return -1;
 }
 
 /* Free the current process's resources. */
