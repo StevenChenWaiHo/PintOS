@@ -9,6 +9,7 @@
 #include "threads/vaddr.h"
 #include "pagedir.h"
 #include "process.h"
+#include "devices/input.h"
 #include "devices/shutdown.h"
 #include "lib/kernel/stdio.h"
 
@@ -168,6 +169,7 @@ open (uint32_t *args, uint32_t *eax) {
     fd_pair->fd = thread_current ()->curr_fd++;
     fd_pair->file_ref = fp;
     list_push_front (&thread_current ()->fd_ref, &fd_pair->fd_elem);
+    //printf("Opening fd %d\n", fd_pair->fd);
     *eax = fd_pair->fd;
   }
 }
@@ -175,11 +177,11 @@ open (uint32_t *args, uint32_t *eax) {
 void
 filesize (uint32_t *args, uint32_t *eax) {
   int fd = args[0];
-  if (fd > 2) {
+  if (fd >= 2) {
     struct file *fp = fd_search (fd);
     if (fp) {
       lock_acquire (&file_l);
-      *eax = file_length (fp);
+      *eax = (uint32_t) file_length (fp);
       lock_release (&file_l);
       return;
     }
@@ -189,10 +191,29 @@ filesize (uint32_t *args, uint32_t *eax) {
 
 
 void
-read (uint32_t *args, uint32_t *eax UNUSED) {
+read (uint32_t *args, uint32_t *eax) {
   int fd = args[0];
   void *buffer = args[1];
-  unsigned size = args[2];
+  off_t size = args[2];
+
+  struct file *fp = fd_search (fd);
+
+  valid_pointer (buffer);
+  valid_pointer (buffer + size);
+
+  if (fd == 1 || !fp) {
+    exit_handler (-1);
+  } else if (fd == 0) {
+    uint8_t *buf8 = (uint8_t *) buffer;
+    for (int i = 0; i < size; i++) {
+      buf8[i] = input_getc ();
+    }
+    *eax = size;
+  } else {
+    lock_acquire (&file_l);
+    *eax = file_read (fp, buffer, size);
+    lock_release (&file_l);
+  }
 }
 
 void
@@ -200,12 +221,23 @@ write (uint32_t *args, uint32_t *eax) {
   //printf("Writing...\n");
   int fd = args[0];
   const void *buffer = (void *) args[1];
-  unsigned size = args[2];
-  //valid_pointer(&buffer);
+  off_t size = args[2];
+
+  struct file *fp = fd_search (fd);
+  
+  valid_pointer (buffer);
+  valid_pointer (buffer + size);
+
   if (fd == 1) {
     putbuf (buffer, size);
+    *eax = size;
+  } else if (fp) {
+    lock_acquire (&file_l);
+    *eax = file_write (fp, buffer, size);
+    lock_release (&file_l);
+  } else {
+    exit_handler (-1);
   }
-  *eax = size;
 }
 
 void
@@ -226,7 +258,7 @@ close (uint32_t *args, uint32_t *eax UNUSED) {
   int fd = args[0];
 }
 
-static struct file *fd_search (int id) {
+static struct file *fd_search (int fd) {
   struct list_elem *e;
   struct list *fd_ref_list = &thread_current()->fd_ref;
 
@@ -234,7 +266,7 @@ static struct file *fd_search (int id) {
        e = list_next (e)) {
     struct fd_elem_struct *curr = 
       list_entry (e, struct fd_elem_struct, fd_elem);
-    if (curr->fd == id)
+    if (curr->fd == fd)
       return curr->file_ref;
   }
   return NULL;
