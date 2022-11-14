@@ -116,7 +116,8 @@ struct thread
       struct semaphore sema;           /* blocks parent thread if parent waits for child */
       bool parent_is_terminated;
       bool child_is_terminated;
-      struct list_elem child_elem;     /* list elem for list children in parent process */
+      bool waited;
+      struct list_elem child_elem; /* list elem for list children in parent process */
    };
 
 /* If false (default), use round-robin scheduler.

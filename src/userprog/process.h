@@ -3,7 +3,7 @@
 
 #include "threads/thread.h"
 
-struct information {
+struct start_process_param {
   char *filename;
   struct child_thread_coord *child_thread_coord; 
 };
