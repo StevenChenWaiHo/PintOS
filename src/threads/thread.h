@@ -104,12 +104,13 @@ struct thread
    //  struct list children;                          /* children of parent thread */
 #endif
     int exit_code;
-    struct semaphore sema;
+    int curr_fd;
+    struct list fd_ref;
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
 
-    struct child_thread_coord
+struct child_thread_coord
    {
       tid_t tid;                       /* child thread's tid */
       int exit_status;                 /* exit status of child thread 0 for success */
@@ -119,6 +120,13 @@ struct thread
       bool waited;
       struct list_elem child_elem; /* list elem for list children in parent process */
    };
+
+struct fd_elem_struct
+  {
+    int fd;
+    struct file *file_ref;
+    struct list_elem fd_elem;
+  };
 
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.

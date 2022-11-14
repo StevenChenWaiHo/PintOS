@@ -1,17 +1,22 @@
 #include "userprog/syscall.h"
 #include <stdio.h>
 #include <syscall-nr.h>
+#include "filesys/filesys.h"
+#include "filesys/file.h"
 #include "threads/interrupt.h"
+#include "threads/malloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "pagedir.h"
 #include "process.h"
+#include "devices/input.h"
 #include "devices/shutdown.h"
 #include "lib/kernel/stdio.h"
 
 #define SYS_CALL_NUM 13
 
 #define HANDLER_GET_ARG();
+struct lock file_l;
 
 /* System call function prototypes. */
 void halt        (uint32_t *, uint32_t *) NO_RETURN;
@@ -29,7 +34,10 @@ void tell        (uint32_t *, uint32_t *);
 void close       (uint32_t *, uint32_t *);
 
 void syscall_init (void);
-static void exit_handler (void);
+static struct file *fd_search (int);
+static struct fd_elem_struct *fd_search_struct (int);
+static void fd_destroy (int);
+static void syscall_handler (struct intr_frame *);
 
 /* Function pointer array for system calls. */
 void (*sys_call[SYS_CALL_NUM])(uint32_t *, uint32_t *) = {
@@ -38,17 +46,17 @@ void (*sys_call[SYS_CALL_NUM])(uint32_t *, uint32_t *) = {
     read, write, seek, tell, close
 };
 
-static void syscall_handler (struct intr_frame *);
-
 void
 syscall_init (void) 
 {
-  //TODO: Implement stack initialization
+  lock_init (&file_l);
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
-static void
-exit_handler (void) {
+void
+exit_handler (int status) {
+  thread_current ()->exit_code = status;
+  printf ("%s: exit(%d)\n", thread_name(), thread_current ()->exit_code);
   thread_exit ();
   NOT_REACHED ();
 }
@@ -58,28 +66,24 @@ exit_handler (void) {
  *  and kills the current thread. */
 static void
 valid_pointer (const void *uaddr) {
-  //? Check for 3 arg fields?
   if (!is_user_vaddr (uaddr)
     || !pagedir_get_page(thread_current ()->pagedir, uaddr)) {
-    printf("Invalid memory access.");
-    exit_handler ();
+    printf("Invalid memory access.\n");
+    exit_handler (-1);
   }
 }
 
 static void
-return_func (int sys_call_num) {
-  
-}
-
-static void
 syscall_handler (struct intr_frame *f) {
-  
   valid_pointer(f->esp);
   uint32_t args[3] = {0};
   uint32_t *p = f->esp;
   uint32_t *return_p = &(f->eax);
 
-  //hex_dump(p - 24, p - 24, 96, true);
+  //printf("%x\n", p);
+
+  //hex_dump(p, p, 96, true);
+
 
   int arg_count = 1;
   int sys_call_num = *p;
@@ -97,16 +101,10 @@ syscall_handler (struct intr_frame *f) {
     args[i] = *p;
   }
 
+  //printf("Executing sys_call %d\n", sys_call_num);
   sys_call[sys_call_num] (args, return_p);
-  /*
-  
-  if (return_func(sys_call_num)) {
-    f->eax = *return_p;
-  }
-  */
 
   //printf ("Call type of %d complete.\n", sys_call_num);
-  //thread_exit ();
 }
 
 void
@@ -117,10 +115,7 @@ halt (uint32_t *args UNUSED, uint32_t *eax UNUSED) {
 
 void
 exit (uint32_t *args, uint32_t *eax UNUSED) {
-  thread_current ()->exit_code = args[0];
-  
-  printf ("%s: exit(%d)\n", thread_name(), thread_current ()->exit_code);
-  exit_handler ();
+  exit_handler ((int) args[0]);
   NOT_REACHED ();
 }
 
@@ -137,59 +132,175 @@ wait (uint32_t *args, uint32_t *eax UNUSED) {
 }
 
 void
-file_create (uint32_t *args, uint32_t *eax UNUSED) {
+file_create (uint32_t *args, uint32_t *eax) {
+  //printf("Creating file...");
   const char *file = args[0];
   unsigned size = args[1];
+
+  valid_pointer (file);
+  if (file[0] == '\0') {
+    exit_handler (-1);
+  }
+  lock_acquire (&file_l);
+  *eax = (uint32_t) filesys_create (file, size);
+  lock_release (&file_l);
 }
 
 void
-file_remove (uint32_t *args, uint32_t *eax UNUSED) {
+file_remove (uint32_t *args, uint32_t *eax) {
   const char *file = args[0];
+
+  valid_pointer (file);
+
+  lock_acquire (&file_l);
+  *eax = (uint32_t) filesys_remove(file);
+  lock_release (&file_l);
 }
 
 void
-open (uint32_t *args, uint32_t *eax UNUSED) {
+open (uint32_t *args, uint32_t *eax) {
   const char *file = args[0];
+
+  valid_pointer (file);
+
+  lock_acquire (&file_l);
+  struct file *fp = (uint32_t) filesys_open(file);
+  lock_release (&file_l);
+
+  if (!fp) {
+    *eax = -1;
+  } else {
+    struct fd_elem_struct *fd_pair = malloc (sizeof (struct fd_elem_struct));
+    fd_pair->fd = thread_current ()->curr_fd++;
+    fd_pair->file_ref = fp;
+    list_push_front (&thread_current ()->fd_ref, &fd_pair->fd_elem);
+    //printf("Opening fd %d\n", fd_pair->fd);
+    *eax = fd_pair->fd;
+  }
+
 }
 
+
 void
-filesize (uint32_t *args, uint32_t *eax UNUSED) {
+filesize (uint32_t *args, uint32_t *eax) {
   int fd = args[0];
+  if (fd >= 2) {
+    struct file *fp = fd_search (fd);
+
+    lock_acquire (&file_l);
+    *eax = (uint32_t) file_length (fp);
+    lock_release (&file_l);
+    return;
+  }
+  *eax = -1;
 }
 
 
 void
-read (uint32_t *args, uint32_t *eax UNUSED) {
+read (uint32_t *args, uint32_t *eax) {
   int fd = args[0];
   void *buffer = args[1];
-  unsigned size = args[2];
+  off_t size = args[2];
+
+  struct file *fp = fd_search (fd);
+
+  valid_pointer (buffer);
+  valid_pointer (buffer + size);
+
+  if (fd == 1) {
+    exit_handler (-1);
+  } else if (fd == 0) {
+    uint8_t *buf8 = (uint8_t *) buffer;
+    for (int i = 0; i < size; i++) {
+      buf8[i] = input_getc ();
+    }
+    *eax = size;
+  } else {
+    lock_acquire (&file_l);
+    *eax = file_read (fp, buffer, size);
+    lock_release (&file_l);
+  }
 }
 
 void
 write (uint32_t *args, uint32_t *eax) {
+  //printf("Writing...\n");
   int fd = args[0];
   const void *buffer = (void *) args[1];
-  unsigned size = args[2];
+  off_t size = args[2];
+  
+  valid_pointer (buffer);
+  valid_pointer (buffer + size);
+
   if (fd == 1) {
     putbuf (buffer, size);
+    *eax = size;
+  } else {
+    struct file *fp = fd_search (fd);
+
+    lock_acquire (&file_l);
+    *eax = file_write (fp, buffer, size);
+    lock_release (&file_l);
   }
-  *eax = size;
 }
 
 void
 seek (uint32_t *args, uint32_t *eax UNUSED) {
   int fd = args[0];
-  unsigned position = args[1];
+  off_t position = args[1];
+
+  struct file *fp = fd_search (fd);
+  lock_acquire (&file_l);
+  file_seek (fp, position);
+  lock_release (&file_l);
 }
 
 
 void
 tell (uint32_t *args, uint32_t *eax UNUSED) {
   int fd = args[0];
+
+  struct file *fp = fd_search (fd);
+
+  lock_acquire (&file_l);
+  *eax = file_tell (fd);
+  lock_release (&file_l);
 }
 
 
 void
 close (uint32_t *args, uint32_t *eax UNUSED) {
   int fd = args[0];
+  fd_destroy (fd);
+}
+
+static struct file *fd_search (int fd) {
+  return fd_search_struct (fd)->file_ref;
+}
+
+static struct fd_elem_struct *fd_search_struct (int fd) {
+  struct list_elem *e;
+  struct list *fd_ref_list = &thread_current()->fd_ref;
+
+  for (e = list_begin (fd_ref_list); e != list_end (fd_ref_list);
+       e = list_next (e)) {
+    struct fd_elem_struct *curr = 
+      list_entry (e, struct fd_elem_struct, fd_elem);
+    if (curr->fd == fd)
+      return curr;
+  }
+  printf ("There's no such file.");
+  exit_handler (-1);
+  NOT_REACHED ();
+}
+
+static void fd_destroy (int fd) {
+  struct fd_elem_struct *e = fd_search_struct (fd);
+
+  lock_acquire (&file_l);
+  file_close (e->file_ref);
+  lock_release (&file_l);
+
+  list_remove (&e->fd_elem);
+  free (e);
 }

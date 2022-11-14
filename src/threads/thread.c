@@ -217,9 +217,9 @@ thread_create (const char *name, int priority,
   thread_unblock (t);
 
   #ifdef USERPROG
-    sema_init (&t->sema, 0);
+    list_init (&t->fd_ref);
+    t->curr_fd = 2;
   #endif
-
   return tid;
 }
 
