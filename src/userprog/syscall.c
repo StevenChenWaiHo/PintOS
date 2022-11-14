@@ -36,7 +36,6 @@ void syscall_init (void);
 static struct file *fd_search (int);
 static struct fd_elem_struct *fd_search_struct (int);
 static void fd_destroy (int);
-static void exit_handler (int);
 static void syscall_handler (struct intr_frame *);
 
 /* Function pointer array for system calls. */
@@ -53,7 +52,7 @@ syscall_init (void)
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
-static void
+void
 exit_handler (int status) {
   thread_current ()->exit_code = status;
   printf ("%s: exit(%d)\n", thread_name(), thread_current ()->exit_code);
@@ -80,9 +79,9 @@ syscall_handler (struct intr_frame *f) {
   uint32_t *p = f->esp;
   uint32_t *return_p = &(f->eax);
 
-  printf("%x\n", p);
+  //printf("%x\n", p);
 
-  hex_dump(p, p, 96, true);
+  //hex_dump(p, p, 96, true);
 
 
   int arg_count = 1;
@@ -165,12 +164,17 @@ open (uint32_t *args, uint32_t *eax) {
   struct file *fp = (uint32_t) filesys_open(file);
   lock_release (&file_l);
 
-  struct fd_elem_struct *fd_pair = malloc (sizeof (struct fd_elem_struct));
-  fd_pair->fd = thread_current ()->curr_fd++;
-  fd_pair->file_ref = fp;
-  list_push_front (&thread_current ()->fd_ref, &fd_pair->fd_elem);
-  //printf("Opening fd %d\n", fd_pair->fd);
-  *eax = fd_pair->fd;
+  if (!fp) {
+    *eax = -1;
+  } else {
+    struct fd_elem_struct *fd_pair = malloc (sizeof (struct fd_elem_struct));
+    fd_pair->fd = thread_current ()->curr_fd++;
+    fd_pair->file_ref = fp;
+    list_push_front (&thread_current ()->fd_ref, &fd_pair->fd_elem);
+    //printf("Opening fd %d\n", fd_pair->fd);
+    *eax = fd_pair->fd;
+  }
+
 }
 
 
