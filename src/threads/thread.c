@@ -322,7 +322,6 @@ thread_exit (void)
   process_exit ();
 #endif
 
-  printf ("%s: exit(%d)\n", thread_name(), thread_current ()->exit_code);
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */

@@ -152,12 +152,12 @@ start_process (void *info) /* TODO: Change file_name_ name to argv. */
     }
     if_.esp = (void *) push_arguments((int *)if_.esp, argc, argv);
 
-    hex_dump(start_ptr - 24, start_ptr - 24, 96, true);
     //printf("%x\n", if_.esp);
     //sema_up(&cur->sema);
 
     //set coord tid
-    //sema_up()
+    get_coord_from_info(information)->tid = thread_current()->tid;
+    sema_up(&get_coord_from_info(information)->sema);
   }
   palloc_free_page(file_name);
 
@@ -226,7 +226,6 @@ process_wait (tid_t child_tid)
   if (!list_empty(children)){
     struct list_elem *child = list_front(children);
     while(child != list_end(children)) {
-      ASSERT(false);
       struct child_thread_coord *coord = list_entry(child, struct child_thread_coord, child_elem);
       if (coord->tid == child_tid)
       {

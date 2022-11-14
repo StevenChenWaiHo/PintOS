@@ -127,6 +127,7 @@ exit (uint32_t *args, uint32_t *eax UNUSED) {
 void
 exec (uint32_t *args, uint32_t *eax UNUSED) {
   const char *cmd_line = (char *) args[0];
+  *eax = process_execute(cmd_line);
 }
 
 void
