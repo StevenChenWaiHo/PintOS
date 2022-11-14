@@ -15,6 +15,7 @@
 
 #define SYS_CALL_NUM 13
 
+#define HANDLER_GET_ARG();
 struct lock file_l;
 
 /* System call function prototypes. */
@@ -121,11 +122,13 @@ exit (uint32_t *args, uint32_t *eax UNUSED) {
 void
 exec (uint32_t *args, uint32_t *eax UNUSED) {
   const char *cmd_line = (char *) args[0];
+  *eax = process_execute(cmd_line);
 }
 
 void
 wait (uint32_t *args, uint32_t *eax UNUSED) {
   pid_t pid = args[0];
+  *eax = process_wait(pid);
 }
 
 void

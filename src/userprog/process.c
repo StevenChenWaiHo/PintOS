@@ -25,6 +25,8 @@
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static int *push_arguments(int *esp, int argc, int *argv);
+static void *get_file_from_info(struct start_process_param *param_struct);
+static struct child_thread_coord *get_coord_from_info(struct start_process_param *param_struct);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -33,8 +35,10 @@ static int *push_arguments(int *esp, int argc, int *argv);
 tid_t
 process_execute (const char *file_name) 
 {
+  enum intr_level old_level = intr_disable ();
+
   char *fn_copy;
-  tid_t tid;
+  tid_t tid = TID_ERROR;
   char *sp;
   struct thread *t;
 
@@ -45,20 +49,68 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
-  /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
-  if (tid == TID_ERROR)
+  intr_set_level (old_level);
+
+  /* DELETE? Create a new thread to execute FILE_NAME. */
+  // DELETE? char *fn = strtok_r(fn_copy, " ", &sp);
+  /* DELETE? TODO: Add interrupt disables. */
+
+  /* Create struct for linkage between parent and child */
+  struct child_thread_coord *child = malloc(sizeof(struct child_thread_coord));
+  sema_init(&child->sema, 0);
+  if (!child) {
+    printf("Cannot allocate child_thread_coord\n");
+  }
+  list_push_front(&thread_current()->children, &child->child_elem);
+  intr_set_level (old_level);
+
+  /* Define var information to pass to start_process */
+  struct start_process_param *param = malloc(sizeof(struct start_process_param));
+  param->filename = fn_copy;
+  param->child_thread_coord = child;
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, param);
+  if (tid == TID_ERROR) {
     palloc_free_page (fn_copy); 
-  t = thread_search_tid(tid);
-  //sema_down(&t->sema);
-  return tid;
+    //sema_down(&t->sema);
+    return TID_ERROR;
+  }
+
+  
+
+  /* WAIT: block parent thread, until success/failure of child loading executable is confirmed.
+  * start process will call set tid, then call sema_up to unblock thread */
+  sema_down(&child->sema);
+
+  /* Receives child thread tid */
+  if (child->tid == TID_ERROR) {
+    if (thread_current()->child_thread_coord->parent_is_terminated) {
+      free(thread_current()->child_thread_coord);
+    }else{
+      thread_current()->child_thread_coord->parent_is_terminated = true;
+    }
+  return TID_ERROR;
+  }
+  return tid;  
+}
+
+static void *
+get_file_from_info (struct start_process_param *param_struct){
+  return param_struct->filename;
+}
+
+static struct child_thread_coord * 
+get_coord_from_info (struct start_process_param *param_struct){
+  return param_struct->child_thread_coord;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
+start_process (void *param_struct) /* TODO: Change file_name_ name to argv. */
 {
+  struct start_process_param *param = param_struct;
+  void *file_name_ = get_file_from_info(param);
+  thread_current()->child_thread_coord = get_coord_from_info(param);
   char *sp;
   char *file_name = file_name_;
   char *fn_copy = malloc(strlen(file_name) + 1);
@@ -66,7 +118,6 @@ start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
   file_name = strtok_r(file_name, " ", &sp);
   struct intr_frame if_;
   bool success;
-  struct thread *cur = thread_current();
 
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
@@ -80,8 +131,15 @@ start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
   /* If load failed, quit. */
   if (!success) 
   {
-    //sema_up(&cur->sema);
-    printf("load failed\n");
+    printf("Start Process ERROR: %d", thread_current()->tid);
+    // sema_up(&cur->sema);
+    /* WAIT: child fails to allocate, remove child from parent's children and return exit status */
+    thread_current()->child_thread_coord->tid = TID_ERROR;
+    thread_current()->child_thread_coord->exit_status = -1;
+    list_remove(&thread_current()->child_thread_coord->child_elem);
+    thread_current()->child_thread_coord->child_is_terminated = true;
+    sema_up(&thread_current()->child_thread_coord->sema);
+    /* WAIT: additions ends here */
     thread_exit ();
   }
   else
@@ -103,9 +161,12 @@ start_process (void *file_name_) /* TODO: Change file_name_ name to argv. */
     }
     if_.esp = (void *) push_arguments((int *)if_.esp, argc, argv);
 
-    //hex_dump(start_ptr - 24, start_ptr - 24, 96, true);
     //printf("%x\n", if_.esp);
     //sema_up(&cur->sema);
+
+    //set coord tid
+    get_coord_from_info(param)->tid = thread_current()->tid;
+    sema_up(&get_coord_from_info(param)->sema);
   }
   palloc_free_page(file_name);
 
@@ -164,24 +225,81 @@ static int *push_arguments(int *esp, int argc, int argv[])
  * This function will be implemented in task 2.
  * For now, it does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-  //TODO: Change infinite loop to actual process_wait()
-  while(1) {}
-  return -1;
+  enum intr_level old_level = intr_disable ();
+
+  struct child_thread_coord *child_coord = NULL;
+  struct list *children = &thread_current()->children;
+  /* Verify child, chid thread must be direct childeren (threads waited on will be removed from list) */
+  
+  if (!list_empty(children)){
+    struct list_elem *child = list_front(children);
+    while(child != list_end(children)) {
+      struct child_thread_coord *coord = list_entry(child, struct child_thread_coord, child_elem);
+      if (coord->tid == child_tid)
+      {
+        child_coord = coord;
+        if(child_coord->waited){
+          return -1;
+        }
+        else{
+          child_coord->waited = true;
+        }
+        break;
+      }
+      child = list_next(child);
+    }
+  }
+  intr_set_level (old_level);
+  
+  if (child_coord == NULL) {
+    return -1;
+  }
+
+  /* child thread may terminate before sema down (calls sema_up), so sema_down will not block parent thread */
+  /* find the child_thread_coord to sema down thread_current() */
+  sema_down(&child_coord->sema);
+  /* somehow sema is 0, parent thread is unblocked */
+  int ret = child_coord->exit_status;
+  list_remove(&child_coord->child_elem);
+  /* TODO: synchronisation */
+  
+  if (child_coord->child_is_terminated == true) {
+    free(child_coord);
+  }
+  return ret;
+
 }
 
 /* Free the current process's resources. */
 void
 process_exit (void)
 {
+  enum intr_level old_level = intr_disable ();
+
   struct thread *cur = thread_current ();
+  struct child_thread_coord *cur_coord = cur->child_thread_coord;
   uint32_t *pd;
+
+  /* unblocks parent thread if parent thread waiting for current thread */
+  cur_coord->exit_status = cur->exit_code;
+
+  /* free all the child coord which child has have terminated */
+  for (struct list_elem *e = list_begin(&thread_current()->children); e != list_end(&thread_current()->children); e = list_next(e))
+  {
+    struct child_thread_coord *child_coord = list_entry(e, struct child_thread_coord, child_elem);
+    child_coord->parent_is_terminated = true;
+    if (child_coord->child_is_terminated)
+    {
+      free(e);
+    }
+  }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
-  if (pd != NULL) 
+  if (pd != NULL)
     {
       /* Correct ordering here is crucial.  We must set
          cur->pagedir to NULL before switching page directories,
@@ -194,6 +312,15 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+
+  /* Free struct child_thread_coord if current thread is an orphan. */
+  if (cur_coord->parent_is_terminated) {
+      free(cur_coord);
+      return;
+  }
+  sema_up(&cur->child_thread_coord->sema);
+
+  intr_set_level (old_level);
 }
 
 /* Sets up the CPU for running user code in the current

@@ -91,12 +91,17 @@ struct thread
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
 
+   /* probably should not be defined here */
+    struct list children;                             /* children of parent thread */
+
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /* Page directory. */
+    uint32_t *pagedir;                                /* Page directory. */
+    struct child_thread_coord *child_thread_coord;    /* child thread's child thread coordinator */
+   //  struct list children;                          /* children of parent thread */
 #endif
     int exit_code;
     int curr_fd;
@@ -104,6 +109,17 @@ struct thread
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
+
+struct child_thread_coord
+   {
+      tid_t tid;                       /* child thread's tid */
+      int exit_status;                 /* exit status of child thread 0 for success */
+      struct semaphore sema;           /* blocks parent thread if parent waits for child */
+      bool parent_is_terminated;
+      bool child_is_terminated;
+      bool waited;
+      struct list_elem child_elem; /* list elem for list children in parent process */
+   };
 
 struct fd_elem_struct
   {
