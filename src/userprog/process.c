@@ -34,7 +34,7 @@ static struct child_thread_coord *get_coord_from_info(struct start_process_param
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
 process_execute (const char *file_name) 
-{
+{  
   enum intr_level old_level = intr_disable ();
 
   char *fn_copy;
@@ -57,6 +57,7 @@ process_execute (const char *file_name)
 
   /* Create struct for linkage between parent and child */
   struct child_thread_coord *child = malloc(sizeof(struct child_thread_coord));
+  child->parent_is_terminated = false;
   sema_init(&child->sema, 0);
   if (!child) {
     printf("Cannot allocate child_thread_coord\n");
@@ -75,8 +76,6 @@ process_execute (const char *file_name)
     return TID_ERROR;
   }
 
-  
-
   /* WAIT: block parent thread, until success/failure of child loading executable is confirmed.
   * start process will call set tid, then call sema_up to unblock thread */
   sema_down(&child->sema);
@@ -85,10 +84,8 @@ process_execute (const char *file_name)
   if (child->tid == TID_ERROR) {
     if (thread_current()->child_thread_coord->parent_is_terminated) {
       free(thread_current()->child_thread_coord);
-    }else{
-      thread_current()->child_thread_coord->parent_is_terminated = true;
     }
-  return TID_ERROR;
+    return TID_ERROR;
   }
   return tid;  
 }
@@ -312,6 +309,7 @@ process_exit (void)
       pagedir_destroy (pd);
     }
 
+  //printf("Parent terminated state %d\n", cur_coord->parent_is_terminated);
   /* Free struct child_thread_coord if current thread is an orphan. */
   if (cur_coord->parent_is_terminated) {
       free(cur_coord);
