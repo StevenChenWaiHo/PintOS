@@ -50,7 +50,7 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
-  intr_set_level (old_level);
+
 
   /* DELETE? Create a new thread to execute FILE_NAME. */
   // DELETE? char *fn = strtok_r(fn_copy, " ", &sp);
@@ -58,23 +58,36 @@ process_execute (const char *file_name)
 
   /* Create struct for linkage between parent and child */
   struct child_thread_coord *child = malloc(sizeof(struct child_thread_coord));
-  child->parent_is_terminated = false;
-  sema_init(&child->sema, 0);
+  
   if (!child) {
     printf("Cannot allocate child_thread_coord\n");
+    return TID_ERROR;
   }
+
+  child->parent_is_terminated = false;
+  child->waited = false;
+  sema_init(&child->sema, 0);
   list_push_front(&thread_current()->children, &child->child_elem);
-  intr_set_level (old_level);
 
   /* Define var information to pass to start_process */
   struct start_process_param *param = malloc(sizeof(struct start_process_param));
+  
+  if (!param) {
+    printf("Cannot allocate start_process_param\n");
+    free (child);
+    return TID_ERROR;
+  }
+  
   param->filename = fn_copy;
   param->child_thread_coord = child;
+  intr_set_level (old_level);
+
   tid = thread_create (file_name, PRI_DEFAULT, start_process, param);
   if (tid == TID_ERROR) {
     palloc_free_page (fn_copy); 
     return TID_ERROR;
   }
+  
 
   /* WAIT: block parent thread, until success/failure of child loading executable is confirmed.
   * start process will call set tid, then call sema_up to unblock thread */
@@ -128,6 +141,8 @@ start_process (void *param_struct) /* TODO: Change file_name_ name to argv. */
   int *start_ptr = if_.esp;
   //palloc_free_page (file_name);
   /* If load failed, quit. */
+
+  palloc_free_page(file_name);
   if (!success) 
   {
     // sema_up(&cur->sema);
@@ -165,7 +180,6 @@ start_process (void *param_struct) /* TODO: Change file_name_ name to argv. */
     thread_current ()->child_thread_coord->tid = thread_current ()->tid;
     sema_up(&thread_current ()->child_thread_coord->sema);
   }
-  palloc_free_page(file_name);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -250,6 +264,7 @@ process_wait (tid_t child_tid)
   }
   intr_set_level (old_level);
   
+  // Can't find children's tid in the children list.
   if (child_coord == NULL) {
     return -1;
   }
@@ -278,7 +293,7 @@ process_exit (void)
   /* unblocks parent thread if parent thread waiting for current thread */
   cur_coord->exit_status = cur->exit_code;
 
-  /* free all the child coord which child has have terminated */
+  /* free all the child coord which child has have terminated 
   for (struct list_elem *e = list_begin(&thread_current()->children); e != list_end(&thread_current()->children); e = list_next(e))
   {
     struct child_thread_coord *child_coord = list_entry(e, struct child_thread_coord, child_elem);
@@ -288,6 +303,21 @@ process_exit (void)
     {
       list_remove (e);
       free (child_coord);
+    }
+  }*/
+  struct list *children_list = &thread_current()->children;
+
+  if (!list_empty(children_list)){
+    struct list_elem *e = list_front(children_list);
+    while(e != list_end(children_list)) {
+      struct child_thread_coord *child_coord = list_entry(e, struct child_thread_coord, child_elem);
+      child_coord->parent_is_terminated = true;
+      e = list_next (e);
+      if (child_coord->child_is_terminated)
+      {
+        list_remove (e->prev);
+        free (child_coord);
+      }
     }
   }
 
