@@ -102,10 +102,11 @@ struct thread
     uint32_t *pagedir;                                /* Page directory. */
     struct child_thread_coord *child_thread_coord;    /* child thread's child thread coordinator */
    //  struct list children;                          /* children of parent thread */
-#endif
     int exit_code;
     int curr_fd;
     struct list fd_ref;
+    struct file *process_file;
+#endif
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };

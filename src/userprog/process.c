@@ -316,6 +316,7 @@ process_exit (void)
       free(cur_coord);
       return;
   }
+  file_close (cur->process_file);
   sema_up(&cur->child_thread_coord->sema);
 
   intr_set_level (old_level);
@@ -427,8 +428,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
   process_activate ();
 
   /* Open executable file. */
-  filesys_lock(); 
+  filesys_lock();
   file = filesys_open (file_name);
+  thread_current ()->process_file = file;
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
@@ -517,6 +519,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
   *eip = (void (*) (void)) ehdr.e_entry;
 
   success = true;
+
+  filesys_unlock();
+  return success;
 
  done:
   /* We arrive here whether the load is successful or not. */
