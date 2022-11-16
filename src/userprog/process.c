@@ -73,7 +73,6 @@ process_execute (const char *file_name)
   tid = thread_create (file_name, PRI_DEFAULT, start_process, param);
   if (tid == TID_ERROR) {
     palloc_free_page (fn_copy); 
-    //sema_down(&t->sema);
     return TID_ERROR;
   }
 
@@ -83,9 +82,10 @@ process_execute (const char *file_name)
 
   /* Receives child thread tid */
   if (child->tid == TID_ERROR) {
-    if (thread_current()->child_thread_coord->parent_is_terminated) {
-      free(thread_current()->child_thread_coord);
-    }
+    list_remove (&child->child_elem);
+    //if (thread_current()->child_thread_coord->parent_is_terminated) {
+    free(child);
+    //}
     return TID_ERROR;
   }
   return tid;  
@@ -134,7 +134,6 @@ start_process (void *param_struct) /* TODO: Change file_name_ name to argv. */
     /* WAIT: child fails to allocate, remove child from parent's children and return exit status */
     thread_current()->child_thread_coord->tid = TID_ERROR;
     thread_current()->child_thread_coord->exit_status = -1;
-    list_remove(&thread_current()->child_thread_coord->child_elem);
     thread_current()->child_thread_coord->child_is_terminated = true;
     sema_up(&thread_current()->child_thread_coord->sema);
     /* WAIT: additions ends here */
@@ -260,7 +259,8 @@ process_wait (tid_t child_tid)
   sema_down(&child_coord->sema);
   /* somehow sema is 0, parent thread is unblocked */
   int ret = child_coord->exit_status;
-
+  list_remove (&child_coord->child_elem);
+  free (child_coord);
   return ret;
 
 }
@@ -282,6 +282,7 @@ process_exit (void)
   for (struct list_elem *e = list_begin(&thread_current()->children); e != list_end(&thread_current()->children); e = list_next(e))
   {
     struct child_thread_coord *child_coord = list_entry(e, struct child_thread_coord, child_elem);
+    printf("%d\n", child_coord->tid);
     child_coord->parent_is_terminated = true;
     if (child_coord->child_is_terminated)
     {
@@ -319,12 +320,14 @@ process_exit (void)
   //printf("Parent terminated state %d\n", cur_coord->parent_is_terminated);
   /* Free struct child_thread_coord if current thread is an orphan. */
   if (cur_coord->parent_is_terminated) {
+    
       free(cur_coord);
       return;
   }
-  sema_up(&cur->child_thread_coord->sema);
 
   intr_set_level (old_level);
+  sema_up(&cur->child_thread_coord->sema);
+
 }
 
 /* Sets up the CPU for running user code in the current
