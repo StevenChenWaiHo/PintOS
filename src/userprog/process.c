@@ -109,6 +109,7 @@ start_process (void *param_struct) /* TODO: Change file_name_ name to argv. */
   struct start_process_param *param = param_struct;
   void *file_name = get_file_from_info(param);
   thread_current()->child_thread_coord = get_coord_from_info(param);
+  free (param);
   char *sp;
   char *fn_copy = malloc(strlen(file_name) + 1);
   strlcpy(fn_copy, file_name, strlen(file_name) + 1);
@@ -162,8 +163,8 @@ start_process (void *param_struct) /* TODO: Change file_name_ name to argv. */
     //sema_up(&cur->sema);
 
     //set coord tid
-    get_coord_from_info(param)->tid = thread_current()->tid;
-    sema_up(&get_coord_from_info(param)->sema);
+    thread_current ()->child_thread_coord->tid = thread_current ()->tid;
+    sema_up(&thread_current ()->child_thread_coord->sema);
   }
   palloc_free_page(file_name);
 
@@ -259,12 +260,7 @@ process_wait (tid_t child_tid)
   sema_down(&child_coord->sema);
   /* somehow sema is 0, parent thread is unblocked */
   int ret = child_coord->exit_status;
-  list_remove(&child_coord->child_elem);
-  /* TODO: synchronisation */
-  
-  if (child_coord->child_is_terminated == true) {
-    free(child_coord);
-  }
+
   return ret;
 
 }
@@ -289,9 +285,19 @@ process_exit (void)
     child_coord->parent_is_terminated = true;
     if (child_coord->child_is_terminated)
     {
-      free(e);
+      list_remove (e);
+      free (child_coord);
     }
   }
+
+  filesys_lock ();
+  for (struct list_elem *e = list_begin(&thread_current()->fd_ref); e != list_end(&thread_current()->fd_ref); e = list_next(e))
+  {
+    struct fd_elem_struct *open_file = list_entry (e, struct fd_elem_struct, fd_elem);
+    file_close (open_file->file_ref);
+  }
+  file_close (cur->process_file);
+  filesys_unlock ();
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -316,7 +322,6 @@ process_exit (void)
       free(cur_coord);
       return;
   }
-  file_close (cur->process_file);
   sema_up(&cur->child_thread_coord->sema);
 
   intr_set_level (old_level);
@@ -419,12 +424,16 @@ load (const char *file_name, void (**eip) (void), void **esp)
   struct file *file = NULL;
   off_t file_ofs;
   bool success = false;
+  bool opened = false;
   int i;
 
+
+  
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     goto done;
+
   process_activate ();
 
   /* Open executable file. */
@@ -520,12 +529,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   success = true;
 
-  filesys_unlock();
-  return success;
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
   filesys_unlock();
   return success;
 }
