@@ -46,6 +46,16 @@ void (*sys_call[SYS_CALL_NUM])(uint32_t *, uint32_t *) = {
     read, write, seek, tell, close
 };
 
+void filesys_lock(void)
+{
+  lock_acquire(&file_l);
+}
+
+void filesys_unlock(void)
+{
+  lock_release(&file_l);
+}
+
 void
 syscall_init (void) 
 {
@@ -114,6 +124,7 @@ exit (uint32_t *args, uint32_t *eax UNUSED) {
 void
 exec (uint32_t *args, uint32_t *eax UNUSED) {
   const char *cmd_line = (char *) args[0];
+  valid_pointer(cmd_line);
   *eax = process_execute(cmd_line);
 }
 
@@ -132,9 +143,9 @@ file_create (uint32_t *args, uint32_t *eax) {
   if (file[0] == '\0') {
     exit_handler (-1);
   }
-  lock_acquire (&file_l);
+  filesys_lock ();
   *eax = (uint32_t) filesys_create (file, size);
-  lock_release (&file_l);
+  filesys_unlock ();
 }
 
 void
@@ -143,9 +154,9 @@ file_remove (uint32_t *args, uint32_t *eax) {
 
   valid_pointer (file);
 
-  lock_acquire (&file_l);
+  filesys_lock ();
   *eax = (uint32_t) filesys_remove(file);
-  lock_release (&file_l);
+  filesys_unlock ();
 }
 
 void
@@ -154,9 +165,9 @@ open (uint32_t *args, uint32_t *eax) {
 
   valid_pointer (file);
 
-  lock_acquire (&file_l);
+  filesys_lock ();
   struct file *fp = (uint32_t) filesys_open(file);
-  lock_release (&file_l);
+  filesys_unlock ();
 
   if (!fp) {
     *eax = -1;
@@ -177,9 +188,9 @@ filesize (uint32_t *args, uint32_t *eax) {
   if (fd >= 2) {
     struct file *fp = fd_search (fd);
 
-    lock_acquire (&file_l);
+    filesys_lock ();
     *eax = (uint32_t) file_length (fp);
-    lock_release (&file_l);
+    filesys_unlock ();
     return;
   }
   *eax = -1;
@@ -206,9 +217,9 @@ read (uint32_t *args, uint32_t *eax) {
     }
     *eax = size;
   } else {
-    lock_acquire (&file_l);
+    filesys_lock();
     *eax = file_read (fp, buffer, size);
-    lock_release (&file_l);
+    filesys_unlock();
   }
 }
 
@@ -227,9 +238,9 @@ write (uint32_t *args, uint32_t *eax) {
   } else {
     struct file *fp = fd_search (fd);
 
-    lock_acquire (&file_l);
+    filesys_lock();
     *eax = file_write (fp, buffer, size);
-    lock_release (&file_l);
+    filesys_unlock();
   }
 }
 
@@ -239,9 +250,9 @@ seek (uint32_t *args, uint32_t *eax UNUSED) {
   off_t position = args[1];
 
   struct file *fp = fd_search (fd);
-  lock_acquire (&file_l);
+  filesys_lock();
   file_seek (fp, position);
-  lock_release (&file_l);
+  filesys_unlock();
 }
 
 
@@ -251,9 +262,9 @@ tell (uint32_t *args, uint32_t *eax UNUSED) {
 
   struct file *fp = fd_search (fd);
 
-  lock_acquire (&file_l);
+  filesys_lock();
   *eax = file_tell (fd);
-  lock_release (&file_l);
+  filesys_unlock();
 }
 
 
@@ -285,9 +296,9 @@ static struct fd_elem_struct *fd_search_struct (int fd) {
 static void fd_destroy (int fd) {
   struct fd_elem_struct *e = fd_search_struct (fd);
 
-  lock_acquire (&file_l);
+  filesys_lock();
   file_close (e->file_ref);
-  lock_release (&file_l);
+  filesys_unlock();
 
   list_remove (&e->fd_elem);
   free (e);
