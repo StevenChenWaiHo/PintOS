@@ -86,6 +86,7 @@ process_execute (const char *file_name)
   tid = thread_create (file_name, PRI_DEFAULT, start_process, param);
   if (tid == TID_ERROR) {
     free (param);
+    list_remove(&child->child_elem);
     free (child);
     param_memory_counter--;
     child_memory_counter--;
@@ -97,16 +98,16 @@ process_execute (const char *file_name)
   * start process will call set tid, then call sema_up to unblock thread */
   sema_down (&child->sema);
 
+  old_level = intr_disable ();
   /* Receives child thread tid */
   if (child->tid == TID_ERROR) {
     list_remove (&child->child_elem);
-    //if (thread_current ()->child_thread_coord->parent_is_terminated) {
     free (child);
     child_memory_counter--;
-    //}
     return TID_ERROR;
   }
   return tid;  
+  intr_set_level (old_level);
 }
 
 static void *
@@ -124,6 +125,7 @@ get_coord_from_info (struct start_process_param *param_struct){
 static void
 start_process (void *param_struct) 
 {
+  enum intr_level old_level = intr_disable ();
   /* Extract function parameter from param_struct*/
   struct start_process_param *param = param_struct;
   void *file_name = get_file_from_info (param);
@@ -149,18 +151,18 @@ start_process (void *param_struct)
   success = load (file_name, &if_.eip, &if_.esp);
 
   int *start_ptr = if_.esp;
-  //palloc_free_page (file_name);
   /* If load failed, quit. */
 
   palloc_free_page (file_name);
+  intr_set_level (old_level);
+
   if (!success) 
   {
-    // sema_up (&cur->sema);
-    /* WAIT: child fails to allocate, remove child from parent's children and return exit status */
+    /* Child fails to allocate, remove child from parent's children and return exit status */
     cur_coord->tid = TID_ERROR;
     cur_coord->exit_status = -1;
     cur_coord->child_is_terminated = true;
-    sema_up (&cur_coord->sema);
+    sema_up(&cur_coord->sema);
     /* WAIT: additions ends here */
     thread_exit ();
   }
@@ -171,20 +173,14 @@ start_process (void *param_struct)
     int argv[MAX_ARGS_NO];
     char *token = strtok_r (fn_copy, " ", &sp);
     while (token != NULL)
-    //for (char *token = strtok_r (fn_copy, " ", &sp); token != NULL; token = strtok_r (NULL, " ", &sp))
     {
       if_.esp -= (strlen (token)+1);
-      //printf ("%x\n", if_.esp);
       memcpy (if_.esp, token, strlen (token)+1); /* Push tokens onto stack. */
       argv[argc++] = (int) if_.esp;          /* Store token pointers as int. */
-      //printf ("argv of argc:%d = %x\n", argc, argv[argc]);
 
       token = strtok_r (NULL, " ", &sp);
     }
     if_.esp = (void *) push_arguments ( (int *)if_.esp, argc, argv);
-
-    //printf ("%x\n", if_.esp);
-    //sema_up (&cur->sema);
 
     //set coord tid
     cur_coord->tid = thread_current ()->tid;
@@ -211,14 +207,11 @@ static int *push_arguments (int *esp, int argc, int argv[])
     esp--;
     * (int *) esp = 0;
 
-    //printf ("%x\n", esp);
-
     /* Push token addresses onto stack. */
     for (int i = argc - 1; i >= 0; i--)
     {
       esp--;
       * (int *) esp = (int) argv[i];
-      //printf ("%x\n", esp);
     }
 
     /* Push argv and argc. */
@@ -272,23 +265,27 @@ process_wait (tid_t child_tid)
       child = list_next (child);
     }
   }
-  intr_set_level (old_level);
-  
+
   // Can't find children's tid in the children list.
   if (child_coord == NULL) {
     return -1;
   }
 
+  intr_set_level (old_level);
   /* child thread may terminate before sema down (calls sema_up), so sema_down will not block parent thread */
   /* find the child_thread_coord to sema down thread_current () */
   sema_down (&child_coord->sema);
+
+  enum intr_level old_level = intr_disable ();
+
   /* somehow sema is 0, parent thread is unblocked */
   int ret = child_coord->exit_status;
   list_remove (&child_coord->child_elem);
   free (child_coord);
   child_memory_counter--;
-  return ret;
+  intr_set_level (old_level);
 
+  return ret;
 }
 
 /* Free the current process's resources. */
@@ -304,18 +301,7 @@ process_exit (void)
   /* unblocks parent thread if parent thread waiting for current thread */
   cur_coord->exit_status = cur->exit_code;
 
-  /* free all the child coord which child has have terminated 
-  for (struct list_elem *e = list_begin (&thread_current ()->children); e != list_end (&thread_current ()->children); e = list_next (e))
-  {
-    struct child_thread_coord *child_coord = list_entry (e, struct child_thread_coord, child_elem);
-    printf ("%d\n", child_coord->tid);
-    child_coord->parent_is_terminated = true;
-    if (child_coord->child_is_terminated)
-    {
-      list_remove (e);
-      free (child_coord);
-    }
-  }*/
+  /* free all the child coord which child has have terminated */
   struct list *children_list = &thread_current ()->children;
 
   if (!list_empty (children_list)){
@@ -360,7 +346,6 @@ process_exit (void)
     }
 
   cur_coord->child_is_terminated = true;
-  //printf ("Parent terminated state %d\n", cur_coord->parent_is_terminated);
   /* Free struct child_thread_coord if current thread is an orphan. */
   if (cur_coord->parent_is_terminated) {
     
@@ -371,8 +356,6 @@ process_exit (void)
 
   intr_set_level (old_level);
   sema_up (&cur->child_thread_coord->sema);
-  //printf ("Child counter = %d, param counter = %d\n", child_memory_counter, param_memory_counter);
-
 }
 
 /* Sets up the CPU for running user code in the current
