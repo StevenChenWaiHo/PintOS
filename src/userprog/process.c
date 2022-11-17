@@ -123,6 +123,7 @@ get_coord_from_info (struct start_process_param *param_struct){
 static void
 start_process (void *param_struct) 
 {
+  enum intr_level old_level = intr_disable ();
   /* Extract function parameter from param_struct*/
   struct start_process_param *param = param_struct;
   void *file_name = get_file_from_info (param);
@@ -143,6 +144,7 @@ start_process (void *param_struct)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
+  intr_set_level (old_level);
 
   bool success;
   success = load (file_name, &if_.eip, &if_.esp);  
@@ -454,7 +456,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   off_t file_ofs;
   bool success = false;
   int i;
-  
+
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
