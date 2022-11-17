@@ -23,6 +23,8 @@
 
 #define MAX_ARGS_NO 50
 
+static int param_memory_counter = 0;
+static int child_memory_counter = 0;
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static int *push_arguments(int *esp, int argc, int *argv);
@@ -50,16 +52,12 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
-
-
-  /* DELETE? Create a new thread to execute FILE_NAME. */
-  // DELETE? char *fn = strtok_r(fn_copy, " ", &sp);
-  /* DELETE? TODO: Add interrupt disables. */
-
   /* Create struct for linkage between parent and child */
   struct child_thread_coord *child = malloc(sizeof(struct child_thread_coord));
+  child_memory_counter++;
   
   if (!child) {
+    palloc_free_page (fn_copy); 
     printf("Cannot allocate child_thread_coord\n");
     return TID_ERROR;
   }
@@ -71,10 +69,13 @@ process_execute (const char *file_name)
 
   /* Define var information to pass to start_process */
   struct start_process_param *param = malloc(sizeof(struct start_process_param));
+  param_memory_counter++;
   
   if (!param) {
+    palloc_free_page (fn_copy); 
     printf("Cannot allocate start_process_param\n");
     free (child);
+    child_memory_counter--;
     return TID_ERROR;
   }
   
@@ -84,7 +85,10 @@ process_execute (const char *file_name)
 
   tid = thread_create (file_name, PRI_DEFAULT, start_process, param);
   if (tid == TID_ERROR) {
-    palloc_free_page (fn_copy); 
+    free (param);
+    free (child);
+    param_memory_counter--;
+    child_memory_counter--;
     return TID_ERROR;
   }
   
@@ -97,7 +101,8 @@ process_execute (const char *file_name)
   if (child->tid == TID_ERROR) {
     list_remove (&child->child_elem);
     //if (thread_current()->child_thread_coord->parent_is_terminated) {
-    free(child);
+    free (child);
+    child_memory_counter--;
     //}
     return TID_ERROR;
   }
@@ -123,6 +128,7 @@ start_process (void *param_struct) /* TODO: Change file_name_ name to argv. */
   void *file_name = get_file_from_info(param);
   thread_current()->child_thread_coord = get_coord_from_info(param);
   free (param);
+  param_memory_counter--;
   char *sp;
   char *fn_copy = malloc(strlen(file_name) + 1);
   strlcpy(fn_copy, file_name, strlen(file_name) + 1);
@@ -276,6 +282,7 @@ process_wait (tid_t child_tid)
   int ret = child_coord->exit_status;
   list_remove (&child_coord->child_elem);
   free (child_coord);
+  child_memory_counter--;
   return ret;
 
 }
@@ -317,6 +324,7 @@ process_exit (void)
       {
         list_remove (e->prev);
         free (child_coord);
+        child_memory_counter--;
       }
     }
   }
@@ -347,16 +355,19 @@ process_exit (void)
       pagedir_destroy (pd);
     }
 
+  cur_coord->child_is_terminated = true;
   //printf("Parent terminated state %d\n", cur_coord->parent_is_terminated);
   /* Free struct child_thread_coord if current thread is an orphan. */
   if (cur_coord->parent_is_terminated) {
     
       free(cur_coord);
+      child_memory_counter--;
       return;
   }
 
   intr_set_level (old_level);
   sema_up(&cur->child_thread_coord->sema);
+  //printf("Child counter = %d, param counter = %d\n", child_memory_counter, param_memory_counter);
 
 }
 
