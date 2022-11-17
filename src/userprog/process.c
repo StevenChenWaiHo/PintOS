@@ -42,8 +42,6 @@ process_execute (const char *file_name)
 
   char *fn_copy;
   tid_t tid = TID_ERROR;
-  char *sp;
-  struct thread *t;
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load (). */
@@ -125,7 +123,6 @@ get_coord_from_info (struct start_process_param *param_struct){
 static void
 start_process (void *param_struct) 
 {
-  enum intr_level old_level = intr_disable ();
   /* Extract function parameter from param_struct*/
   struct start_process_param *param = param_struct;
   void *file_name = get_file_from_info (param);
@@ -148,14 +145,10 @@ start_process (void *param_struct)
   if_.eflags = FLAG_IF | FLAG_MBS;
 
   bool success;
-  success = load (file_name, &if_.eip, &if_.esp);
-
-  int *start_ptr = if_.esp;
-  /* If load failed, quit. */
+  success = load (file_name, &if_.eip, &if_.esp);  
 
   palloc_free_page (file_name);
-  intr_set_level (old_level);
-
+  /* If load failed, quit. */
   if (!success) 
   {
     /* Child fails to allocate, remove child from parent's children and return exit status */
@@ -276,7 +269,7 @@ process_wait (tid_t child_tid)
   /* find the child_thread_coord to sema down thread_current () */
   sema_down (&child_coord->sema);
 
-  enum intr_level old_level = intr_disable ();
+  old_level = intr_disable ();
 
   /* somehow sema is 0, parent thread is unblocked */
   int ret = child_coord->exit_status;
@@ -460,10 +453,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   struct file *file = NULL;
   off_t file_ofs;
   bool success = false;
-  bool opened = false;
   int i;
-
-
   
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
