@@ -84,6 +84,13 @@ valid_pointer (const void *uaddr) {
 }
 
 static void
+valid_buffer (const void *buffer, off_t size) {
+  for (int i = 0; i < (size + pg_ofs(buffer)) / PGSIZE + 1; i++) {
+    valid_pointer (buffer + i * PGSIZE);
+  }
+}
+
+static void
 syscall_handler (struct intr_frame *f) {
   valid_pointer(f->esp);
   uint32_t args[3] = {0};
@@ -204,8 +211,7 @@ read (uint32_t *args, uint32_t *eax) {
 
   struct file *fp = fd_search (fd);
 
-  valid_pointer (buffer);
-  valid_pointer (buffer + size);
+  valid_buffer (buffer, size);
 
   if (fd == 1) {
     exit_handler (-1);
@@ -228,8 +234,7 @@ write (uint32_t *args, uint32_t *eax) {
   const void *buffer = (void *) args[1];
   off_t size = args[2];
   
-  valid_pointer (buffer);
-  valid_pointer (buffer + size);
+  valid_buffer (buffer, size);
 
   if (fd == 1) {
     putbuf (buffer, size);
