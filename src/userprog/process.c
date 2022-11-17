@@ -23,8 +23,6 @@
 
 #define MAX_ARGS_NO 50
 
-static int param_memory_counter = 0;
-static int child_memory_counter = 0;
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static int *push_arguments (int *esp, int argc, int *argv);
@@ -40,11 +38,9 @@ process_execute (const char *file_name)
 {  
   enum intr_level old_level = intr_disable ();
 
-  char *fn_copy;
-  tid_t tid = TID_ERROR;
-
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load (). */
+  char *fn_copy;
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
     return TID_ERROR;
@@ -52,7 +48,6 @@ process_execute (const char *file_name)
 
   /* Create struct for linkage between parent and child */
   struct child_thread_coord *child = malloc (sizeof (struct child_thread_coord));
-  child_memory_counter++;
   
   if (!child) {
     palloc_free_page (fn_copy); 
@@ -67,13 +62,11 @@ process_execute (const char *file_name)
 
   /* Define var information to pass to start_process */
   struct start_process_param *param = malloc (sizeof (struct start_process_param));
-  param_memory_counter++;
   
   if (!param) {
     palloc_free_page (fn_copy); 
     printf ("Cannot allocate start_process_param\n");
     free (child);
-    child_memory_counter--;
     return TID_ERROR;
   }
   
@@ -81,13 +74,12 @@ process_execute (const char *file_name)
   param->child_thread_coord = child;
   intr_set_level (old_level);
 
+  tid_t tid = TID_ERROR;
   tid = thread_create (file_name, PRI_DEFAULT, start_process, param);
   if (tid == TID_ERROR) {
     free (param);
     list_remove(&child->child_elem);
     free (child);
-    param_memory_counter--;
-    child_memory_counter--;
     return TID_ERROR;
   }
   
@@ -101,7 +93,6 @@ process_execute (const char *file_name)
   if (child->tid == TID_ERROR) {
     list_remove (&child->child_elem);
     free (child);
-    child_memory_counter--;
     return TID_ERROR;
   }
   return tid;  
@@ -130,7 +121,6 @@ start_process (void *param_struct)
   struct child_thread_coord *cur_coord = get_coord_from_info (param);
   thread_current()->child_thread_coord = cur_coord;
   free(param);
-  param_memory_counter--;
 
   char *sp;
   char *fn_copy = malloc (strlen (file_name) + 1);
@@ -277,7 +267,6 @@ process_wait (tid_t child_tid)
   int ret = child_coord->exit_status;
   list_remove (&child_coord->child_elem);
   free (child_coord);
-  child_memory_counter--;
   intr_set_level (old_level);
 
   return ret;
@@ -309,7 +298,6 @@ process_exit (void)
       {
         list_remove (e->prev);
         free (child_coord);
-        child_memory_counter--;
       }
     }
   }
@@ -350,7 +338,6 @@ process_exit (void)
   if (cur_coord->parent_is_terminated) {
     
       free (cur_coord);
-      child_memory_counter--;
       return;
   }
 
