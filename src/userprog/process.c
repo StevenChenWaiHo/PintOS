@@ -320,10 +320,15 @@ process_exit (void)
   }
 
   filesys_lock ();
-  for (struct list_elem *e = list_begin (&thread_current ()->fd_ref); e != list_end (&thread_current ()->fd_ref); e = list_next (e))
-  {
-    struct fd_elem_struct *open_file = list_entry (e, struct fd_elem_struct, fd_elem);
-    file_close (open_file->file_ref);
+  struct list *fd_ref_list = &thread_current()->fd_ref;
+  if (!list_empty (fd_ref_list)) {
+    struct list_elem *e = list_front(fd_ref_list);
+    while (e != list_end (fd_ref_list)) {
+      struct fd_elem_struct *open_file = list_entry (e, struct fd_elem_struct, fd_elem);
+      file_close (open_file->file_ref);
+      e = list_next (e);
+      free (open_file);
+    }
   }
   file_close (cur->process_file);
   filesys_unlock ();
