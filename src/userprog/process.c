@@ -92,7 +92,7 @@ process_execute (const char *file_name)
   }
   
   /* Blocks parent thread until success/failure of child loading executable
-  is confirmed. start_process() will call set tid, then call sema_up to unblock 
+  is confirmed. start_process () will call set tid, then call sema_up to unblock 
   parent thread. */
   sema_down (&child->sema);
   old_level = intr_disable ();
@@ -156,7 +156,7 @@ start_process (void *param_struct)
     cur_coord->tid = TID_ERROR;
     cur_coord->exit_status = -1;
     cur_coord->child_is_terminated = true;
-    sema_up(&cur_coord->sema);
+    sema_up (&cur_coord->sema);
     thread_exit ();
     NOT_REACHED ();
   }
@@ -238,7 +238,7 @@ process_wait (tid_t child_tid)
   enum intr_level old_level = intr_disable ();
 
   /* Verify child, chid thread must be direct childeren (threads waited on will 
-    be removed from list) */
+    be removed from list). */
   struct child_thread_coord *child_coord = NULL;
   struct list *children = &thread_current ()->children;
   if (!list_empty (children)){
@@ -269,9 +269,9 @@ process_wait (tid_t child_tid)
   intr_set_level (old_level);
   /* Situation 1: Child is not terminated
           The sema in child_thread_coord will block parent thread until it
-          terminate and called sema_up(). 
+          terminate and called sema_up (). 
     Situation 2: Child is terminated
-          sema_up() is called when the child thread is terminated, thus parent 
+          sema_up () is called when the child thread is terminated, thus parent 
           thread will not be blocked and acquire child's exit_status. */
   sema_down (&child_coord->sema);
 
@@ -280,7 +280,7 @@ process_wait (tid_t child_tid)
   /* Parent thread is unblocked, get exit_status, free its child's thread_coord 
   and remove the thread_coord from parent's children_list. */
   int ret = child_coord->exit_status;
-  free_child_coord(child_coord);
+  free_child_coord (child_coord);
   intr_set_level (old_level);
 
   return ret;
@@ -292,12 +292,12 @@ process_exit (void)
 {
   enum intr_level old_level = intr_disable ();
 
-  /* Set the exit_code its child_thead_coord*/
+  /* Set the exit_code its child_thead_coord. */
   struct thread *cur = thread_current ();
   struct child_thread_coord *cur_coord = cur->child_thread_coord;
   cur_coord->exit_status = cur->exit_code;
 
-  /* free all the child coord which child has have terminated */
+  /* Free all the child coord which child has have terminated. */
   struct list *children_list = &thread_current ()->children;
   if (!list_empty (children_list)){
     struct list_elem *e = list_front (children_list);
@@ -307,16 +307,16 @@ process_exit (void)
       struct list_elem *e_next = list_next (e);
       if (child_coord->child_is_terminated)
       {
-        free_child_coord(child_coord);
+        free_child_coord (child_coord);
       }
       e = e_next;
     }
   }
 
   filesys_lock ();
-  struct list *fd_ref_list = &thread_current()->fd_ref;
+  struct list *fd_ref_list = &thread_current ()->fd_ref;
   if (!list_empty (fd_ref_list)) {
-    struct list_elem *e = list_front(fd_ref_list);
+    struct list_elem *e = list_front (fd_ref_list);
     while (e != list_end (fd_ref_list)) {
       struct fd_elem_struct *open_file = list_entry (e, struct fd_elem_struct, fd_elem);
       file_close (open_file->file_ref);
@@ -348,7 +348,7 @@ process_exit (void)
   cur_coord->child_is_terminated = true;
   /* Free struct child_thread_coord if current thread is an orphan. */
   if (cur_coord->parent_is_terminated) {
-      free_child_coord(cur_coord);
+      free_child_coord (cur_coord);
       return;
   }
 
