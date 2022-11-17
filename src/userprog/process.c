@@ -122,26 +122,30 @@ get_coord_from_info (struct start_process_param *param_struct){
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *param_struct) /* TODO: Change file_name_ name to argv. */
+start_process (void *param_struct) 
 {
+  /* Extract function parameter from param_struct*/
   struct start_process_param *param = param_struct;
   void *file_name = get_file_from_info (param);
-  thread_current ()->child_thread_coord = get_coord_from_info (param);
-  free (param);
+  struct child_thread_coord *cur_coord = get_coord_from_info (param);
+  thread_current()->child_thread_coord = cur_coord;
+  free(param);
   param_memory_counter--;
+
   char *sp;
   char *fn_copy = malloc (strlen (file_name) + 1);
   strlcpy (fn_copy, file_name, strlen (file_name) + 1);
   file_name = strtok_r (file_name, " ", &sp);
   strlcpy (thread_current ()->name, file_name, strlen (file_name) + 1);
-  struct intr_frame if_;
-  bool success;
-
+  
   /* Initialize interrupt frame and load executable. */
+  struct intr_frame if_;
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
+
+  bool success;
   success = load (file_name, &if_.eip, &if_.esp);
 
   int *start_ptr = if_.esp;
@@ -153,10 +157,10 @@ start_process (void *param_struct) /* TODO: Change file_name_ name to argv. */
   {
     // sema_up (&cur->sema);
     /* WAIT: child fails to allocate, remove child from parent's children and return exit status */
-    thread_current ()->child_thread_coord->tid = TID_ERROR;
-    thread_current ()->child_thread_coord->exit_status = -1;
-    thread_current ()->child_thread_coord->child_is_terminated = true;
-    sema_up (&thread_current ()->child_thread_coord->sema);
+    cur_coord->tid = TID_ERROR;
+    cur_coord->exit_status = -1;
+    cur_coord->child_is_terminated = true;
+    sema_up (&cur_coord->sema);
     /* WAIT: additions ends here */
     thread_exit ();
   }
@@ -183,8 +187,8 @@ start_process (void *param_struct) /* TODO: Change file_name_ name to argv. */
     //sema_up (&cur->sema);
 
     //set coord tid
-    thread_current ()->child_thread_coord->tid = thread_current ()->tid;
-    sema_up (&thread_current ()->child_thread_coord->sema);
+    cur_coord->tid = thread_current ()->tid;
+    sema_up (&cur_coord->sema);
   }
 
   /* Start the user process by simulating a return from an
