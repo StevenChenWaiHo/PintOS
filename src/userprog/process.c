@@ -20,13 +20,14 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
-#define MAX_ARGS_NO 50
+#define MAX_ARGS_NO 500
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-static int *push_arguments(int *esp, int argc, int *argv);
 static void *get_file_from_info(struct start_process_param *param_struct);
 static struct child_thread_coord *get_coord_from_info(struct start_process_param *param_struct);
+static void child_failure(struct thread *cur);
+static int *push_arguments(int *esp, int argc, int *argv);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -34,7 +35,7 @@ static struct child_thread_coord *get_coord_from_info(struct start_process_param
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
 process_execute (const char *file_name) 
-{  
+{
   enum intr_level old_level = intr_disable ();
 
   char *fn_copy;
@@ -85,7 +86,7 @@ process_execute (const char *file_name)
     if (thread_current()->child_thread_coord->parent_is_terminated) {
       free(thread_current()->child_thread_coord);
     }
-    return TID_ERROR;
+  return TID_ERROR;
   }
   return tid;  
 }
@@ -123,38 +124,47 @@ start_process (void *param_struct) /* TODO: Change file_name_ name to argv. */
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
 
-  int *start_ptr = if_.esp;
   //palloc_free_page (file_name);
   /* If load failed, quit. */
   if (!success) 
   {
     // sema_up(&cur->sema);
-    /* WAIT: child fails to allocate, remove child from parent's children and return exit status */
-    thread_current()->child_thread_coord->tid = TID_ERROR;
-    thread_current()->child_thread_coord->exit_status = -1;
-    list_remove(&thread_current()->child_thread_coord->child_elem);
-    thread_current()->child_thread_coord->child_is_terminated = true;
-    sema_up(&thread_current()->child_thread_coord->sema);
-    /* WAIT: additions ends here */
+    child_failure(thread_current());
     thread_exit ();
   }
   else
   {    
     /* Tokenise file_name and arguments. */
+    //tokenise(fn_copy, if_.esp);
     int argc = 0;
     int argv[MAX_ARGS_NO];
+    void *start_ptr = if_.esp;
+    void *final_ptr = if_.esp - 23; /* TODO: Fix magic number for arguments set in push_arguments. */
     char *token = strtok_r(fn_copy, " ", &sp);
     while (token != NULL)
     //for (char *token = strtok_r(fn_copy, " ", &sp); token != NULL; token = strtok_r(NULL, " ", &sp))
     {
-      if_.esp -= (strlen(token)+1);
-      //printf("%x\n", if_.esp);
-      memcpy(if_.esp, token, strlen(token)+1); /* Push tokens onto stack. */
+
+      //printf("fnb %x\n", final_ptr); 
+      int token_len = (strlen(token)+1);
+      // printf("%d\n", token_len); 
+      final_ptr -= (token_len + sizeof(char *));
+      // printf("fna %x\n", final_ptr); 
+      if ((int) (start_ptr - final_ptr) >= PGSIZE)
+      {
+        child_failure(thread_current());
+      }
+
+      // should be in push_arguments
+      if_.esp -= token_len;
+      memcpy(if_.esp, token, token_len); /* Push tokens onto stack. */
       argv[argc++] = (int) if_.esp;          /* Store token pointers as int. */
-      //printf("argv of argc:%d = %x\n", argc, argv[argc]);
+      // printf("pt %x\n", if_.esp);
+      // printf("argv of argc:%d = %x\n", argc, argv[argc]);
 
       token = strtok_r(NULL, " ", &sp);
     }
+    // printf("fne %x\n", final_ptr); 
     if_.esp = (void *) push_arguments((int *)if_.esp, argc, argv);
 
     //printf("%x\n", if_.esp);
@@ -174,6 +184,17 @@ start_process (void *param_struct) /* TODO: Change file_name_ name to argv. */
      and jump to it. */
   asm volatile ("movl %0, %%esp; jmp intr_exit" : : "g" (&if_) : "memory");
   NOT_REACHED ();
+}
+
+static void child_failure(struct thread *cur)
+{
+  /* WAIT: child fails to allocate, remove child from parent's children and return exit status */  
+  cur->child_thread_coord->tid = TID_ERROR;
+  cur->child_thread_coord->exit_status = -1;
+  list_remove(&cur->child_thread_coord->child_elem);
+  cur->child_thread_coord->child_is_terminated = true;
+  sema_up(&cur->child_thread_coord->sema);
+  /* WAIT: additions ends here */
 }
 
 /* Basic stack pushing. */
@@ -199,7 +220,7 @@ static int *push_arguments(int *esp, int argc, int argv[])
     /* Push argv and argc. */
     int *argv_pt = esp;
     esp--;
-    *esp = argv_pt;
+    *esp = (int) argv_pt;
     esp--;
     *(int *) esp = argc;
 
@@ -309,7 +330,6 @@ process_exit (void)
       pagedir_destroy (pd);
     }
 
-  //printf("Parent terminated state %d\n", cur_coord->parent_is_terminated);
   /* Free struct child_thread_coord if current thread is an orphan. */
   if (cur_coord->parent_is_terminated) {
       free(cur_coord);
