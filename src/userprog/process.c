@@ -25,7 +25,8 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-static int *push_arguments(int *esp, int argc, int *argv);
+static int *push_arguments(int *esp, int argc, char **argv_str);
+static int try_push_arguments(int *esp, int argc, char **argv_arg);
 static void *get_file_from_info(struct start_process_param *param_struct);
 static struct child_thread_coord *get_coord_from_info(struct start_process_param *param_struct);
 
@@ -92,19 +93,21 @@ process_execute (const char *file_name)
 }
 
 static void *
-get_file_from_info (struct start_process_param *param_struct){
+get_file_from_info (struct start_process_param *param_struct)
+{
   return param_struct->filename;
 }
 
 static struct child_thread_coord * 
-get_coord_from_info (struct start_process_param *param_struct){
+get_coord_from_info (struct start_process_param *param_struct)
+{
   return param_struct->child_thread_coord;
 }
 
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process (void *param_struct) /* TODO: Change file_name_ name to argv. */
+start_process (void *param_struct)
 {
   struct start_process_param *param = param_struct;
   void *file_name = get_file_from_info(param);
@@ -125,7 +128,6 @@ start_process (void *param_struct) /* TODO: Change file_name_ name to argv. */
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (file_name, &if_.eip, &if_.esp);
 
-  int *start_ptr = if_.esp;
   //palloc_free_page (file_name);
   /* If load failed, quit. */
   if (!success) 
@@ -141,29 +143,46 @@ start_process (void *param_struct) /* TODO: Change file_name_ name to argv. */
   }
   else
   {    
-    /* Tokenise file_name and arguments. */
-    int argc = 0;
-    int argv[MAX_ARGS_NO];
     char *token = strtok_r(fn_copy, " ", &sp);
-    while (token != NULL)
-    //for (char *token = strtok_r(fn_copy, " ", &sp); token != NULL; token = strtok_r(NULL, " ", &sp))
-    {
-      if_.esp -= (strlen(token)+1);
-      //printf("%x\n", if_.esp);
-      memcpy(if_.esp, token, strlen(token)+1); /* Push tokens onto stack. */
-      argv[argc++] = (int) if_.esp;          /* Store token pointers as int. */
-      //printf("argv of argc:%d = %x\n", argc, argv[argc]);
-
-      token = strtok_r(NULL, " ", &sp);
-    }
-    if_.esp = (void *) push_arguments((int *)if_.esp, argc, argv);
+    /* Tokenise file_name and arguments. */
+    if (strlen(file_name) <= 14)
+    { 
+      int argc = 0;
+      int argv[MAX_ARGS_NO]; // change to ptr later?
+      char *argv_str[MAX_ARGS_NO];
+      int *start_ptr = if_.esp;
+      int push_status = 0;
+      //for (char *token = strtok_r(fn_copy, " ", &sp); token != NULL; token = strtok_r(NULL, " ", &sp))
+      while (token != NULL && push_status == 0)
+      {
+        // printf("gg%s\n", token);
+        // if_.esp -= (strlen(token)+1);
+        // printf("%x\n", if_.esp);
+        // memcpy(if_.esp, token, strlen(token)+1); /* Push tokens onto stack. */
+        argv_str[argc] = token;          /* Store token in array. */
+        printf("tok1%s\n", argv_str[argc]);
+        argc++;
+        printf("%x\n", if_.esp);
+        push_status = try_push_arguments(start_ptr, argc, argv_str);
+        printf("status %d\n", push_status);
+        if (push_status == -1)
+        {
+          thread_exit();
+        }
+        printf("%x\n", if_.esp);
+        
+        token = strtok_r(NULL, " ", &sp);
+        printf("tok%s\n", token);
+      }
+      push_arguments(if_.esp, argc, argv_str);
 
     //printf("%x\n", if_.esp);
     //sema_up(&cur->sema);
 
     //set coord tid
-    thread_current ()->child_thread_coord->tid = thread_current ()->tid;
-    sema_up(&thread_current ()->child_thread_coord->sema);
+      thread_current ()->child_thread_coord->tid = thread_current ()->tid;
+      sema_up(&thread_current ()->child_thread_coord->sema);
+    }
   }
   palloc_free_page(file_name);
 
@@ -177,9 +196,52 @@ start_process (void *param_struct) /* TODO: Change file_name_ name to argv. */
   NOT_REACHED ();
 }
 
-/* Basic stack pushing. */
-static int *push_arguments(int *esp, int argc, int argv[])
+
+static int try_push_arguments(int *esp, int argc, char **argv_str)
 {
+  int *start_ptr = esp;
+  for (int i = 0; i < argc; i++)
+  {
+    esp -= (strlen(argv_str[i]) + 1);
+  }
+    /* Word-alignment. */
+  esp = (void *) ((intptr_t) esp & 0xfffffffc);
+
+  /* Push null pointer. */
+  esp--;
+  for (int i = argc - 1; i >= 0; i--)
+  {
+    esp--;
+  }
+  /* Push argv and argc. */
+    esp--;
+    esp--;
+
+    /* Push return address. */
+    esp--;
+  if (start_ptr - esp > PGSIZE)
+  {
+    return -1;
+  }
+  return 0;
+}
+
+/* Basic stack pushing. */
+static int *push_arguments(int *esp, int argc, char **argv_str)
+{
+  int argv[MAX_ARGS_NO];
+  for (int i = 0; i < argc; i++)
+  {
+    printf("pt:%x\n", esp);
+    int arg_len = (strlen(argv_str[i])+1);
+    esp -= arg_len;
+    //printf("%x\n", if_.esp);
+    memcpy(esp, argv_str[i], arg_len); /* Push tokens onto stack. */
+    argv[i] = (int) esp;          /* Store token pointers as int. */
+    //printf("argv of argc:%d = %x\n", argc, argv[argc]);
+  }
+    printf("pt:%x\n", esp);
+
     /* Word-alignment. */
     esp = (void *) ((intptr_t) esp & 0xfffffffc);
 
@@ -207,6 +269,7 @@ static int *push_arguments(int *esp, int argc, int argv[])
     /* Push return address. */
     esp--;
     *(int *) esp = 0;  /* Fake return address. */
+    printf("pt_end:%x\n", esp);
 
     return esp;
 }
