@@ -67,7 +67,7 @@ void
 exit_handler (int status) {
   thread_current ()->exit_code = status;
   thread_current ()->child_thread_coord->exit_status = status;
-  printf("Tid:%d, name: %s: exit(%d)\n", thread_current()->tid, thread_name(), thread_current()->exit_code);
+  printf("%s: exit(%d)\n", thread_name(), status);
   thread_exit ();
   NOT_REACHED ();
 }
@@ -132,9 +132,6 @@ void
 wait (uint32_t *args, uint32_t *eax UNUSED) {
   pid_t pid = args[0];
   *eax = process_wait(pid);
-  if (*eax == -1) {
-    printf("Thread returning -1 is tid:%d\n", thread_current()->tid);
-  }
 }
 
 void

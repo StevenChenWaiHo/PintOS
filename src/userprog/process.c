@@ -25,8 +25,9 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-static int *push_arguments(int *esp, int argc, char **argv_str);
-static int try_push_arguments(int *esp, int argc, char **argv_arg);
+static void child_failure(struct thread *thread);
+static int try_push_arguments(int *esp, int argc, char **argv);
+static int *push_arguments(int *esp, int argc, char **argv);
 static void *get_file_from_info(struct start_process_param *param_struct);
 static struct child_thread_coord *get_coord_from_info(struct start_process_param *param_struct);
 
@@ -133,12 +134,7 @@ start_process (void *param_struct)
   if (!success) 
   {
     // sema_up(&cur->sema);
-    /* WAIT: child fails to allocate, remove child from parent's children and return exit status */
-    thread_current()->child_thread_coord->tid = TID_ERROR;
-    thread_current()->child_thread_coord->exit_status = -1;
-    thread_current()->child_thread_coord->child_is_terminated = true;
-    sema_up(&thread_current()->child_thread_coord->sema);
-    /* WAIT: additions ends here */
+    child_failure(thread_current());
     thread_exit ();
   }
   else
@@ -160,28 +156,31 @@ start_process (void *param_struct)
         // printf("%x\n", if_.esp);
         // memcpy(if_.esp, token, strlen(token)+1); /* Push tokens onto stack. */
         argv_str[argc] = token;          /* Store token in array. */
-        printf("tok1%s\n", argv_str[argc]);
+        // printf("tok1 %s\n", argv_str[argc]);
         argc++;
-        printf("%x\n", if_.esp);
+        // printf("%x try:\n", if_.esp);
         push_status = try_push_arguments(start_ptr, argc, argv_str);
-        printf("status %d\n", push_status);
+        // printf("end. status %d\n", push_status);
         if (push_status == -1)
         {
-          thread_exit();
+          child_failure(thread_current());
+          exit_handler(push_status);
         }
-        printf("%x\n", if_.esp);
+        // printf("%x\n", if_.esp);
         
         token = strtok_r(NULL, " ", &sp);
-        printf("tok%s\n", token);
+        // printf("tok%s\n", token);
+        // printf("%d\n\n", argc);
       }
-      push_arguments(if_.esp, argc, argv_str);
+      // printf("%d\n\n", argc);
+      if_.esp = (void *) push_arguments(start_ptr, argc, argv_str); // if_.esp MUST be cast to void *
 
     //printf("%x\n", if_.esp);
     //sema_up(&cur->sema);
 
     //set coord tid
       thread_current ()->child_thread_coord->tid = thread_current ()->tid;
-      sema_up(&thread_current ()->child_thread_coord->sema);
+      sema_up(&thread_current()->child_thread_coord->sema); // DO NOT USE param_getchild
     }
   }
   palloc_free_page(file_name);
@@ -196,13 +195,23 @@ start_process (void *param_struct)
   NOT_REACHED ();
 }
 
+static void child_failure(struct thread *thread)
+{
+  /* WAIT: child fails to allocate, remove child from parent's children and return exit status */  
+  thread->child_thread_coord->tid = TID_ERROR;
+  thread->child_thread_coord->exit_status = -1;
+  thread->child_thread_coord->child_is_terminated = true;
+  sema_up(&thread->child_thread_coord->sema);
+  /* WAIT: additions ends here */
+}
 
-static int try_push_arguments(int *esp, int argc, char **argv_str)
+static int try_push_arguments(int *esp, int argc, char **argv)
 {
   int *start_ptr = esp;
+  // printf("start:%x\n", start_ptr);
   for (int i = 0; i < argc; i++)
   {
-    esp -= (strlen(argv_str[i]) + 1);
+    esp -= (strlen(argv[i]) + 1);
   }
     /* Word-alignment. */
   esp = (void *) ((intptr_t) esp & 0xfffffffc);
@@ -219,7 +228,9 @@ static int try_push_arguments(int *esp, int argc, char **argv_str)
 
     /* Push return address. */
     esp--;
-  if (start_ptr - esp > PGSIZE)
+  int mem = (start_ptr - esp) * 4;
+  // printf("%x mem_use%d\n", esp, mem);
+  if (mem > PGSIZE)
   {
     return -1;
   }
@@ -232,7 +243,7 @@ static int *push_arguments(int *esp, int argc, char **argv_str)
   int argv[MAX_ARGS_NO];
   for (int i = 0; i < argc; i++)
   {
-    printf("pt:%x\n", esp);
+    // printf("pt:%x\n", esp);
     int arg_len = (strlen(argv_str[i])+1);
     esp -= arg_len;
     //printf("%x\n", if_.esp);
@@ -240,7 +251,7 @@ static int *push_arguments(int *esp, int argc, char **argv_str)
     argv[i] = (int) esp;          /* Store token pointers as int. */
     //printf("argv of argc:%d = %x\n", argc, argv[argc]);
   }
-    printf("pt:%x\n", esp);
+    // printf("pt:%x\n", esp);
 
     /* Word-alignment. */
     esp = (void *) ((intptr_t) esp & 0xfffffffc);
@@ -269,7 +280,7 @@ static int *push_arguments(int *esp, int argc, char **argv_str)
     /* Push return address. */
     esp--;
     *(int *) esp = 0;  /* Fake return address. */
-    printf("pt_end:%x\n", esp);
+    // printf("pt_end:%x\n", esp);
 
     return esp;
 }
