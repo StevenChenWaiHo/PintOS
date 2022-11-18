@@ -185,6 +185,7 @@ start_process (void *param_struct)
     // printf("hi");
     
     if_.esp = (void *) push_arguments ((int *)start_ptr, (int *)if_.esp, argc, argv);
+    palloc_free_page(argv);
 
     //set coord tid
     cur_coord->tid = thread_current ()->tid;
@@ -207,7 +208,7 @@ static int *push_arguments (int *start_ptr, int *esp, int argc, int argv[])
     /* Word-alignment. */
     esp = (void *) ( (intptr_t) esp & 0xfffffffc);
     // printf("%d\n", (start_ptr - esp) * 4);
-        if ((start_ptr - esp) * 4 >= PGSIZE)
+    if ((start_ptr - esp) * 4 >= PGSIZE)
     {
       exit_handler(-1);
     }
@@ -226,10 +227,10 @@ static int *push_arguments (int *start_ptr, int *esp, int argc, int argv[])
     {
       esp--;
     // printf("%d\n", (start_ptr - esp) * 4);
-    if ((start_ptr - esp) * 4 >= PGSIZE)
-    {
-      exit_handler(-1);
-    }
+      if ((start_ptr - esp) * 4 >= PGSIZE)
+      {
+        exit_handler(-1);
+      }
       * (int *) esp = (int) argv[i];
     }
 
@@ -241,7 +242,7 @@ static int *push_arguments (int *start_ptr, int *esp, int argc, int argv[])
     {
       exit_handler(-1);
     }
-    *esp = argv_pt;
+    *esp = (int) argv_pt;
     esp--;
     // printf("%d\n", (start_ptr - esp) * 4);
     if ((start_ptr - esp) * 4 >= PGSIZE)
