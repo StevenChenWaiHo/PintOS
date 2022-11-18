@@ -21,8 +21,6 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
-#define MAX_ARGS_NO 500
-
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static int *push_arguments (int *start_ptr, int *esp, int argc, int *argv);
@@ -164,14 +162,14 @@ start_process (void *param_struct)
   {    
     /* Tokenise file_name and arguments. */
     int argc = 0;
-    int argv[MAX_ARGS_NO];
+    int *argv = palloc_get_page(PAL_USER);
     void *start_ptr = if_.esp;
     char *token = strtok_r (fn_copy, " ", &sp);
     while (token != NULL)
     {
       if_.esp -= (strlen (token)+1);     
       // printf("%d\n", (start_ptr - if_.esp)); 
-      if ((start_ptr - if_.esp) >= PGSIZE || argc > MAX_ARGS_NO)
+      if ((start_ptr - if_.esp) >= PGSIZE || argc > PGSIZE)
       {
         exit_handler(-1);
       }
@@ -209,7 +207,7 @@ static int *push_arguments (int *start_ptr, int *esp, int argc, int argv[])
     /* Word-alignment. */
     esp = (void *) ( (intptr_t) esp & 0xfffffffc);
     // printf("%d\n", (start_ptr - esp) * 4);
-    if ((start_ptr - esp) * 4 >= PGSIZE)
+        if ((start_ptr - esp) * 4 >= PGSIZE)
     {
       exit_handler(-1);
     }
