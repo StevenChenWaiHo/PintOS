@@ -2,9 +2,14 @@
 use strict;
 use warnings;
 use tests::tests;
-check_expected ([<<'EOF',<<'EOF']);
+check_expected ([<<'EOF',<<'EOF',<<'EOF']);
 (exec-over-args) begin
 child-args: exit(-1)
+(exec-over-args) exec() did not panic the kernel
+(exec-over-args) end
+exec-over-args: exit(0)
+EOF
+(exec-over-args) begin
 (exec-over-args) exec() did not panic the kernel
 (exec-over-args) end
 exec-over-args: exit(0)
