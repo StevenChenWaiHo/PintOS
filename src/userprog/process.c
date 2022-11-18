@@ -21,7 +21,9 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
-#define EXTRA_ARGS_NO 4
+/* Extra argument counts used in argument passing, containing null pointer,
+   pointer to argv, argc, return adr. */
+#define EXTRA_ARGS_NO 4   
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
@@ -156,7 +158,7 @@ start_process (void *param_struct)
     /* Child fails to load, set exit status, child_is_terminated to true
        and sema_up to let parent to free the coord resources. */
     cur_coord->tid = TID_ERROR;
-    cur_coord->exit_status = -1;
+    cur_coord->exit_status = ERROR;
     cur_coord->child_is_terminated = true;
     sema_up (&cur_coord->sema);
     thread_exit ();
@@ -207,7 +209,7 @@ static void check_pointer (int *start_ptr, int *esp)
 {
   if ((void *)start_ptr - (void *)esp >= PGSIZE)
   {
-    exit_handler(-1);
+    exit_handler(ERROR);
   }
 }
 
@@ -279,7 +281,7 @@ process_wait (tid_t child_tid)
       {
         child_coord = coord;
         if (child_coord->waited){
-          return -1;
+          return ERROR;
         }
         else{
           child_coord->waited = true;
@@ -292,7 +294,7 @@ process_wait (tid_t child_tid)
 
   // Can't find children's tid in the children list.
   if (child_coord == NULL) {
-    return -1;
+    return ERROR;
   }
 
   intr_set_level (old_level);

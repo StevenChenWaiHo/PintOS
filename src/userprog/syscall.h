@@ -4,8 +4,7 @@
 #include <debug.h>
 #include <stdbool.h>
 
-#define PTSIZE 4
-
+#define ERROR -1
 typedef int pid_t;
 
 void filesys_lock (void);

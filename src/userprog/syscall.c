@@ -13,25 +13,26 @@
 #include "devices/shutdown.h"
 #include "lib/kernel/stdio.h"
 
+/* Total system calls implemented in Task 2. */
 #define SYS_CALL_NUM 13
 
-#define HANDLER_GET_ARG();
+/* Global file system lock.*/
 struct lock file_l;
 
 /* System call function prototypes. */
-void halt        (uint32_t *, uint32_t *) NO_RETURN;
-void exit        (uint32_t *, uint32_t *) NO_RETURN;
-void exec        (uint32_t *, uint32_t *);
-void wait        (uint32_t *, uint32_t *);
-void file_create (uint32_t *, uint32_t *);
-void file_remove (uint32_t *, uint32_t *);
-void open        (uint32_t *, uint32_t *);
-void filesize    (uint32_t *, uint32_t *);
-void read        (uint32_t *, uint32_t *);
-void write       (uint32_t *, uint32_t *);
-void seek        (uint32_t *, uint32_t *);
-void tell        (uint32_t *, uint32_t *);
-void close       (uint32_t *, uint32_t *);
+static void halt        (uint32_t *, uint32_t *) NO_RETURN;
+static void exit        (uint32_t *, uint32_t *) NO_RETURN;
+static void exec        (uint32_t *, uint32_t *);
+static void wait        (uint32_t *, uint32_t *);
+static void file_create (uint32_t *, uint32_t *);
+static void file_remove (uint32_t *, uint32_t *);
+static void open        (uint32_t *, uint32_t *);
+static void filesize    (uint32_t *, uint32_t *);
+static void read        (uint32_t *, uint32_t *);
+static void write       (uint32_t *, uint32_t *);
+static void seek        (uint32_t *, uint32_t *);
+static void tell        (uint32_t *, uint32_t *);
+static void close       (uint32_t *, uint32_t *);
 
 void syscall_init (void);
 static struct file *fd_search (int);
@@ -40,22 +41,26 @@ static void fd_destroy (int);
 static void syscall_handler (struct intr_frame *);
 
 /* Function pointer array for system calls. */
-void (*sys_call[SYS_CALL_NUM])(uint32_t *, uint32_t *) = {
+static void (*sys_call[SYS_CALL_NUM]) (uint32_t *, uint32_t *) = {
     halt, exit, exec, wait,
     file_create, file_remove, open, filesize,
     read, write, seek, tell, close
 };
 
-void filesys_lock(void)
+/* Acquire global file system lock. */
+void filesys_lock (void)
 {
   lock_acquire(&file_l);
 }
 
-void filesys_unlock(void)
+/* Release global file system lock. */
+void filesys_unlock (void)
 {
   lock_release(&file_l);
 }
 
+/* Initialization of system calls (called in init.c),
+   Global lock is initialized here. */
 void
 syscall_init (void) 
 {
@@ -63,26 +68,33 @@ syscall_init (void)
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
 }
 
+/* Main exit handler for all occasions of terminating an execution.
+   Sets the current thread as well as its corresponding
+   child coordinator's status, and print out the exit message. 
+   Thread_exit is then called to handle memory freed and thread destruction. */
 void
 exit_handler (int status) {
   thread_current ()->exit_code = status;
   thread_current ()->child_thread_coord->exit_status = status;
-  printf("%s: exit(%d)\n", thread_name(), status);
+  printf ("%s: exit(%d)\n", thread_name (), status);
   thread_exit ();
   NOT_REACHED ();
 }
 
-/*  Function handling checks to user-provided pointers.
- *  Calls functions to clear allocated memory to the current process
- *  and kills the current thread. */
+/* Function handling checks to user-provided pointers.
+   Calls functions to clear allocated memory to the current process
+   and kills the current thread. */
 static void
 valid_pointer (const void *uaddr) {
   if (!is_user_vaddr (uaddr)
-    || !pagedir_get_page(thread_current ()->pagedir, uaddr)) {
-    exit_handler (-1);
+    || !pagedir_get_page (thread_current ()->pagedir, uaddr)) {
+    exit_handler (ERROR);
   }
 }
 
+/* Helper function for the buffer version of pointer validation.
+   Calls valid_pointer at certain (offseted) pointers in every page
+   the buffer spans. */
 static void
 valid_buffer (const void *buffer, off_t size) {
   for (int i = 0; i < (size + pg_ofs(buffer)) / PGSIZE + 1; i++) {
@@ -90,12 +102,16 @@ valid_buffer (const void *buffer, off_t size) {
   }
 }
 
+/* Main system call handler.
+   Takes advantage of the syscall_num enum and function pointers,
+   preloads argument array and does pointer validation on them
+   before calling the corresponding system calls. */
 static void
 syscall_handler (struct intr_frame *f) {
-  valid_pointer(f->esp);
+  valid_pointer (f->esp);
   uint32_t args[3] = {0};
   uint32_t *p = f->esp;
-  uint32_t *return_p = &(f->eax);
+  uint32_t *return_p = & (f->eax);
 
   int arg_count = 1;
   int sys_call_num = *p;
@@ -109,38 +125,55 @@ syscall_handler (struct intr_frame *f) {
     arg_count = 3;
 
   for (int i = 0; i < arg_count; i++) {
-    valid_pointer(++p);
+    valid_pointer (++p);
     args[i] = *p;
   }
 
   sys_call[sys_call_num] (args, return_p);
 }
 
+/* System calls implementations.
+   After preloading the argument array, the values are passed into the
+   function through function pointers and extracted (renamed) within
+   the system calls (for readability).
+   EAX of the intr_frame is passed as pointer into these system calls to 
+   maintain consistent typing (for the pointer array to work),
+   with UNUSED marked in functions that have no return. */
+
+/* Halts the current program by directing invoking shutdown signal.*/
 void
 halt (uint32_t *args UNUSED, uint32_t *eax UNUSED) {
   shutdown_power_off ();
   NOT_REACHED ();
 }
 
+/* Exits the current execution with status code in args[0].
+   This is used only when an explicit call to exit is present
+   in the user program. */
 void
 exit (uint32_t *args, uint32_t *eax UNUSED) {
   exit_handler ((int) args[0]);
   NOT_REACHED ();
 }
 
+/* Executes the command line CMD_LINE by directly calling process_execute
+   and generating a child thread to handle the process.*/
 void
 exec (uint32_t *args, uint32_t *eax UNUSED) {
   const char *cmd_line = (char *) args[0];
-  valid_pointer(cmd_line);
-  *eax = process_execute(cmd_line);
+  valid_pointer (cmd_line);
+  *eax = process_execute (cmd_line);
 }
 
+/* Waits for a present child process with PID by calling process_wait. */
 void
 wait (uint32_t *args, uint32_t *eax UNUSED) {
   pid_t pid = args[0];
-  *eax = process_wait(pid);
+  *eax = process_wait (pid);
 }
 
+/* Creates a new file named FILE with fixed SIZE.
+   This will fail when given an empty file name.*/
 void
 file_create (uint32_t *args, uint32_t *eax) {
   const char *file = args[0];
@@ -148,13 +181,14 @@ file_create (uint32_t *args, uint32_t *eax) {
 
   valid_pointer (file);
   if (file[0] == '\0') {
-    exit_handler (-1);
+    exit_handler (ERROR);
   }
   filesys_lock ();
   *eax = (uint32_t) filesys_create (file, size);
   filesys_unlock ();
 }
 
+/* Remove a file with the given file name FILE.*/
 void
 file_remove (uint32_t *args, uint32_t *eax) {
   const char *file = args[0];
@@ -162,10 +196,14 @@ file_remove (uint32_t *args, uint32_t *eax) {
   valid_pointer (file);
 
   filesys_lock ();
-  *eax = (uint32_t) filesys_remove(file);
+  *eax = (uint32_t) filesys_remove (file);
   filesys_unlock ();
 }
 
+/* Open a file with the given file name.
+   Will fail silently if no file with the file name is found,
+   otherwise will create a file descriptor pair entry FD_PAIR
+   and return FD as ID. */
 void
 open (uint32_t *args, uint32_t *eax) {
   const char *file = args[0];
@@ -173,11 +211,11 @@ open (uint32_t *args, uint32_t *eax) {
   valid_pointer (file);
 
   filesys_lock ();
-  struct file *fp = (uint32_t) filesys_open(file);
+  struct file *fp = (uint32_t) filesys_open (file);
   filesys_unlock ();
 
   if (!fp) {
-    *eax = -1;
+    *eax = ERROR;
   } else {
     struct fd_elem_struct *fd_pair = malloc (sizeof (struct fd_elem_struct));
     fd_pair->fd = thread_current ()->curr_fd++;
@@ -188,6 +226,9 @@ open (uint32_t *args, uint32_t *eax) {
 
 }
 
+/* Return the file size with the given file descriptor ID.
+   If the program attempts to check for STDIN and STDOUT,
+   ERROR = -1 is returned.*/
 void
 filesize (uint32_t *args, uint32_t *eax) {
   int fd = args[0];
@@ -199,35 +240,44 @@ filesize (uint32_t *args, uint32_t *eax) {
     filesys_unlock ();
     return;
   }
-  *eax = -1;
+  *eax = ERROR;
 }
 
-
+/* Read the file with a certain buffer size.
+   First, it searches for the pointer to the file FP,
+   with the file descriptor ID.
+   After validating buffer and checking that it is not reading in STDOUT,
+   it will either read from STDIN or from the file. */
 void
 read (uint32_t *args, uint32_t *eax) {
   int fd = args[0];
   void *buffer = args[1];
   off_t size = args[2];
 
-  struct file *fp = fd_search (fd);
 
   valid_buffer (buffer, size);
 
-  if (fd == 1) {
-    exit_handler (-1);
-  } else if (fd == 0) {
+  if (fd == STDOUT_FILENO) {
+    exit_handler (ERROR);
+  } else if (fd == STDIN_FILENO) {
     uint8_t *buf8 = (uint8_t *) buffer;
     for (int i = 0; i < size; i++) {
       buf8[i] = input_getc ();
     }
     *eax = size;
   } else {
-    filesys_lock();
+    struct file *fp = fd_search (fd);
+    filesys_lock ();
     *eax = file_read (fp, buffer, size);
-    filesys_unlock();
+    filesys_unlock ();
   }
 }
 
+/* Write to the file with a certain buffer size.
+   First, it searches for the pointer to the file FP,
+   with the file descriptor ID.
+   After validating BUFFER and checking that it is not writing in STDIN,
+   it will either write to STDOUT with PUTBUF or to the file. */
 void
 write (uint32_t *args, uint32_t *eax) {
   int fd = args[0];
@@ -236,55 +286,66 @@ write (uint32_t *args, uint32_t *eax) {
   
   valid_buffer (buffer, size);
 
-  if (fd == 1) {
+  if (fd == STDIN_FILENO) {
+    exit_handler (ERROR);
+  } else if (fd == STDOUT_FILENO) {
     putbuf (buffer, size);
     *eax = size;
   } else {
     struct file *fp = fd_search (fd);
-
-    filesys_lock();
+    filesys_lock ();
     *eax = file_write (fp, buffer, size);
-    filesys_unlock();
+    filesys_unlock ();
   }
 }
 
+/* Sets the current inode position in FP (with file descriptor FD) to POSITION.
+   Seek past file size is handled in file system code so no checks are needed.*/
 void
 seek (uint32_t *args, uint32_t *eax UNUSED) {
   int fd = args[0];
   off_t position = args[1];
 
   struct file *fp = fd_search (fd);
-  filesys_lock();
+  filesys_lock ();
   file_seek (fp, position);
-  filesys_unlock();
+  filesys_unlock ();
 }
 
-
+/* Return the current inode position in FP (with file descriptor FD). */
 void
-tell (uint32_t *args, uint32_t *eax UNUSED) {
+tell (uint32_t *args, uint32_t *eax) {
   int fd = args[0];
 
   struct file *fp = fd_search (fd);
 
-  filesys_lock();
+  filesys_lock ();
   *eax = file_tell (fd);
-  filesys_unlock();
+  filesys_unlock ();
 }
 
-
+/* Close the file corresponding to file descriptor FD.
+   File descriptor pair is also destroyed(freed) in the process.*/
 void
 close (uint32_t *args, uint32_t *eax UNUSED) {
   int fd = args[0];
   fd_destroy (fd);
 }
 
+/* File descriptor storage list and search functions. */
+
+/* Helper function to directly extract the file pointer in the pair. */
 static struct file *fd_search (int fd) {
   return fd_search_struct (fd)->file_ref;
 }
 
+/* Search function that iterates through the FD_REF list
+   and match their file descriptor ID with the passed argument FD.
+   If not found, a stricter design is implemented here
+   and the process will exit with ERROR code.*/
 static struct fd_elem_struct *fd_search_struct (int fd) {
   struct list_elem *e;
-  struct list *fd_ref_list = &thread_current()->fd_ref;
+  struct list *fd_ref_list = &thread_current ()->fd_ref;
 
   for (e = list_begin (fd_ref_list); e != list_end (fd_ref_list);
        e = list_next (e)) {
@@ -293,16 +354,17 @@ static struct fd_elem_struct *fd_search_struct (int fd) {
     if (curr->fd == fd)
       return curr;
   }
-  exit_handler (-1);
+  exit_handler (ERROR);
   NOT_REACHED ();
 }
 
+/* Helper function to destroy file descriptor pair when closing a file. */
 static void fd_destroy (int fd) {
   struct fd_elem_struct *e = fd_search_struct (fd);
 
-  filesys_lock();
+  filesys_lock ();
   file_close (e->file_ref);
-  filesys_unlock();
+  filesys_unlock ();
 
   list_remove (&e->fd_elem);
   free (e);
