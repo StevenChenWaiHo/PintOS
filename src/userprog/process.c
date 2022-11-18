@@ -21,6 +21,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#define EXTRA_ARGS_NO 4
+
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
 static void check_pointer (int *start_ptr, int *esp);
@@ -29,6 +31,7 @@ static void *get_file_from_info (struct start_process_param *param_struct);
 static struct child_thread_coord 
   *get_coord_from_info (struct start_process_param *param_struct);
 
+/* Helper function for freeing child coordinators. */
 static void free_child_coord (struct child_thread_coord *coord){
   list_remove (&coord->child_elem);
   free (coord);
@@ -91,13 +94,13 @@ process_execute (const char *file_name)
   }
   
   /* Blocks parent thread until success/failure of child loading executable
-  is confirmed. start_process () will call set tid, then call sema_up to unblock 
-  parent thread. */
+     is confirmed. start_process () will call set tid, then call sema_up to unblock 
+     parent thread. */
   sema_down (&child->sema);
   old_level = intr_disable ();
 
   /* Free child_thread_coord and remove it from parent's children list if child
-  is not loaded successfully. */
+     is not loaded successfully. */
   if (child->tid == TID_ERROR) {
     free_child_coord (child);
     return TID_ERROR;
@@ -151,7 +154,7 @@ start_process (void *param_struct)
   if (!success) 
   {
     /* Child fails to load, set exit status, child_is_terminated to true
-    and sema_up to let parent to free the coord resources. */
+       and sema_up to let parent to free the coord resources. */
     cur_coord->tid = TID_ERROR;
     cur_coord->exit_status = -1;
     cur_coord->child_is_terminated = true;
@@ -161,34 +164,30 @@ start_process (void *param_struct)
   }
   else
   {    
-    /* Tokenise file_name and arguments. */
+    /* Tokenise file_name and arguments. 
+       Pointers to argv elements will be stored in a temporary page, 
+       which will be freed right after pushing all arguments.
+       When there are still more to tokenise, arguments will be
+       memcpy'd to esp and added to argv for later stack pushes.
+       Stack overflow checks are also done every push.*/
     int argc = 0;
     int *argv = palloc_get_page(PAL_USER);
     void *start_ptr = if_.esp;
     char *token = strtok_r (fn_copy, " ", &sp);
     while (token != NULL)
     {
-      if_.esp -= (strlen (token)+1);     
-      // printf("%d\n", (start_ptr - if_.esp)); 
-      if ((start_ptr - if_.esp) >= PGSIZE || argc > PGSIZE)
-      {
-        exit_handler(-1);
-      }
-      memcpy (if_.esp, token, strlen (token)+1); /* Push tokens onto stack. */
-      argv[argc++] = (int) if_.esp;          /* Store token pointers as int. */
-      // puts(token);
+      check_pointer (start_ptr, if_.esp -= (strlen (token)+1));
+      memcpy (if_.esp, token, strlen (token)+1);
+      argv[argc++] = (int) if_.esp;
       token = strtok_r (NULL, " ", &sp);
     }
-    // for (int i = 0; i < argc; i++)
-    // {
-    //   printf("pt:%x\n", argv[i]);
-    // }
-    // printf("hi");
     
+    /* Push the rest of the stack. */
     if_.esp = (void *) push_arguments ((int *)start_ptr, (int *)if_.esp, argc, argv);
     palloc_free_page(argv);
 
-    //set coord tid
+    /* Set current coordinator's tid,
+       then lift the semaphore to release parent thread. */
     cur_coord->tid = thread_current ()->tid;
     sema_up (&cur_coord->sema);
   }
@@ -203,51 +202,52 @@ start_process (void *param_struct)
   NOT_REACHED ();
 }
 
+/* Helper function to check for stack overflow. */
 static void check_pointer (int *start_ptr, int *esp)
 {
-  // printf("%d\n", (void *)start_ptr - (void *)esp);
   if ((void *)start_ptr - (void *)esp >= PGSIZE)
   {
     exit_handler(-1);
   }
 }
 
+/* Helper function for push_arguments.
+   Helps decrement esp and push whatever integer values passed
+   onto the current stack position.*/
+static int *push_stack (int *esp_adr, int arg) {
+  esp_adr--;
+  *esp_adr = arg;
+  return esp_adr;
+}
+
 /* Basic stack pushing. */
 static int *push_arguments (int *start_ptr, int *esp, int argc, int argv[])
 {
     /* Word-alignment. */
-    esp = (void *) ( (intptr_t) esp & 0xfffffffc);
-    check_pointer(start_ptr, esp);
+    esp = (int *) ( (intptr_t) esp & 0xfffffffc);
 
+    /* Check for stack overflow.
+       With the total arguments that will be pushed onto stack known,
+       only one check to the bottom of the stack is necessary.*/
+    check_pointer(start_ptr, esp - sizeof(int *) * (argc + EXTRA_ARGS_NO));
+    
     /* Push null pointer. */
-    esp--;
-    // printf("%d\n", (start_ptr - esp) * 4);
-    check_pointer(start_ptr, esp);
-    * (int *) esp = 0;
+    esp = push_stack (esp, 0);
 
     /* Push token addresses onto stack. */
     for (int i = argc - 1; i >= 0; i--)
     {
-      esp--;
-      check_pointer(start_ptr, esp);
-      * (int *) esp = (int) argv[i];
+      esp = push_stack (esp, (int) argv[i]);
     }
 
     /* Push argv and argc. */
-    int *argv_pt = esp;
-    esp--;
-    check_pointer(start_ptr, esp);
-    *esp = (int) argv_pt;
-    esp--;
-    check_pointer(start_ptr, esp);
-    * (int *) esp = argc;
+    int argv_pt = (int) esp;
+    esp = push_stack (esp, argv_pt);
+    esp = push_stack (esp, argc);
 
-    /* Push return address. */
-    esp--;
-    check_pointer(start_ptr, esp);
-    * (int *) esp = 0;  /* Fake return address. */
+    /* Push fake return address = 0. */
+    esp = push_stack (esp, 0);
 
-    // hex_dump(esp, esp, 5120, true);
     return esp;
 }
 
@@ -342,6 +342,8 @@ process_exit (void)
     }
   }
 
+  /* Closing all files that are still open in this process. 
+     Corresponding file descriptor pairs are also freed here. */
   filesys_lock ();
   struct list *fd_ref_list = &thread_current ()->fd_ref;
   if (!list_empty (fd_ref_list)) {
@@ -353,6 +355,9 @@ process_exit (void)
       free (open_file);
     }
   }
+
+  /* Closes the executable file of the current process, 
+     raising the deny_write limit on the file system.*/
   file_close (cur->process_file);
   filesys_unlock ();
 
@@ -375,6 +380,7 @@ process_exit (void)
     }
 
   cur_coord->child_is_terminated = true;
+  
   /* Free struct child_thread_coord if current thread is an orphan. */
   if (cur_coord->parent_is_terminated) {
       free_child_coord (cur_coord);
