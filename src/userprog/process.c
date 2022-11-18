@@ -169,21 +169,22 @@ start_process (void *param_struct)
     char *token = strtok_r (fn_copy, " ", &sp);
     while (token != NULL)
     {
-      if_.esp -= (strlen (token)+1);
-      memcpy (if_.esp, token, strlen (token)+1); /* Push tokens onto stack. */
-      argv[argc++] = (int) if_.esp;          /* Store token pointers as int. */
-      if ((start_ptr - if_.esp) >= PGSIZE)
+      if_.esp -= (strlen (token)+1);     
+      // printf("%d\n", (start_ptr - if_.esp)); 
+      if ((start_ptr - if_.esp) >= PGSIZE || argc > MAX_ARGS_NO)
       {
         exit_handler(-1);
       }
-      puts(token);
+      memcpy (if_.esp, token, strlen (token)+1); /* Push tokens onto stack. */
+      argv[argc++] = (int) if_.esp;          /* Store token pointers as int. */
+      // puts(token);
       token = strtok_r (NULL, " ", &sp);
     }
-    for (int i = 0; i < argc; i++)
-    {
-      printf("pt:%x\n", argv[i]);
-    }
-    printf("hi");
+    // for (int i = 0; i < argc; i++)
+    // {
+    //   printf("pt:%x\n", argv[i]);
+    // }
+    // printf("hi");
     
     if_.esp = (void *) push_arguments ((int *)start_ptr, (int *)if_.esp, argc, argv);
 
@@ -207,35 +208,60 @@ static int *push_arguments (int *start_ptr, int *esp, int argc, int argv[])
 {
     /* Word-alignment. */
     esp = (void *) ( (intptr_t) esp & 0xfffffffc);
-    int diff = start_ptr - esp;
-    printf("%d\n", diff);
-    if (diff >= PGSIZE)
-      {
-        exit_handler(-1);
-      }
+    // printf("%d\n", (start_ptr - esp) * 4);
+    if ((start_ptr - esp) * 4 >= PGSIZE)
+    {
+      exit_handler(-1);
+    }
 
     /* Push null pointer. */
     esp--;
+    // printf("%d\n", (start_ptr - esp) * 4);
+    if ((start_ptr - esp) * 4 >= PGSIZE)
+    {
+      exit_handler(-1);
+    }
     * (int *) esp = 0;
 
     /* Push token addresses onto stack. */
     for (int i = argc - 1; i >= 0; i--)
     {
       esp--;
+    // printf("%d\n", (start_ptr - esp) * 4);
+    if ((start_ptr - esp) * 4 >= PGSIZE)
+    {
+      exit_handler(-1);
+    }
       * (int *) esp = (int) argv[i];
     }
 
     /* Push argv and argc. */
     int *argv_pt = esp;
     esp--;
+    // printf("%d\n", (start_ptr - esp) * 4);
+    if ((start_ptr - esp) * 4 >= PGSIZE)
+    {
+      exit_handler(-1);
+    }
     *esp = argv_pt;
     esp--;
+    // printf("%d\n", (start_ptr - esp) * 4);
+    if ((start_ptr - esp) * 4 >= PGSIZE)
+    {
+      exit_handler(-1);
+    }
     * (int *) esp = argc;
 
     /* Push return address. */
     esp--;
+    // printf("%d\n", (start_ptr - esp) * 4);
+    if ((start_ptr - esp) * 4 >= PGSIZE)
+    {
+      exit_handler(-1);
+    }
     * (int *) esp = 0;  /* Fake return address. */
 
+    // hex_dump(esp, esp, 5120, true);
     return esp;
 }
 
