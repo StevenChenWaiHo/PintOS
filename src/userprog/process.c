@@ -5,8 +5,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <threads/malloc.h>
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
+#include "userprog/syscall.h"
 #include "userprog/tss.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
@@ -15,56 +17,180 @@
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
+#include "threads/synch.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static int *push_arguments (int *start_ptr, int *esp, int argc, int *argv);
+static void *get_file_from_info (struct start_process_param *param_struct);
+static struct child_thread_coord 
+  *get_coord_from_info (struct start_process_param *param_struct);
+
+static void free_child_coord (struct child_thread_coord *coord){
+  list_remove (&coord->child_elem);
+  free (coord);
+}
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
-   before process_execute() returns.  Returns the new process's
+   before process_execute () returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t
 process_execute (const char *file_name) 
-{
-  char *fn_copy;
-  tid_t tid;
+{  
+  enum intr_level old_level = intr_disable ();
 
   /* Make a copy of FILE_NAME.
-     Otherwise there's a race between the caller and load(). */
+     Otherwise there's a race between the caller and load (). */
+  char *fn_copy;
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
-  /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
-  if (tid == TID_ERROR)
+  /* Create struct for linkage between parent and child. */
+  struct child_thread_coord 
+    *child = malloc (sizeof (struct child_thread_coord));
+  if (!child) {
     palloc_free_page (fn_copy); 
-  return tid;
+    printf ("Cannot allocate child_thread_coord\n");
+    return TID_ERROR;
+  }
+
+  /* Initialize child_thread_coord if it is allocated successfully. */
+  child->parent_is_terminated = false;
+  child->waited = false;
+  sema_init (&child->sema, 0);
+  list_push_front (&thread_current ()->children, &child->child_elem);
+
+  /* Define var information to pass to start_process.*/
+  struct start_process_param 
+    *param = malloc (sizeof (struct start_process_param));
+  if (!param) {
+    palloc_free_page (fn_copy); 
+    printf ("Cannot allocate start_process_param\n");
+    free_child_coord (child);
+    return TID_ERROR;
+  }
+  
+  /* Initialize start_process_param if it is allocated successfully. */
+  param->filename = fn_copy;
+  param->child_thread_coord = child;
+  intr_set_level (old_level);
+
+  /* Start child process. */
+  tid_t tid = TID_ERROR;
+  tid = thread_create (file_name, PRI_DEFAULT, start_process, param);
+  if (tid == TID_ERROR) {
+    free (param);
+    free_child_coord (child);
+    return TID_ERROR;
+  }
+  
+  /* Blocks parent thread until success/failure of child loading executable
+  is confirmed. start_process () will call set tid, then call sema_up to unblock 
+  parent thread. */
+  sema_down (&child->sema);
+  old_level = intr_disable ();
+
+  /* Free child_thread_coord and remove it from parent's children list if child
+  is not loaded successfully. */
+  if (child->tid == TID_ERROR) {
+    free_child_coord (child);
+    return TID_ERROR;
+  }
+  intr_set_level (old_level);
+  return tid;  
 }
 
-/* A thread function that loads a user process and starts it
-   running. */
-static void
-start_process (void *file_name_)
-{
-  char *file_name = file_name_;
-  struct intr_frame if_;
-  bool success;
+static void *
+get_file_from_info (struct start_process_param *param_struct){
+  return param_struct->filename;
+}
 
+static struct child_thread_coord * 
+get_coord_from_info (struct start_process_param *param_struct){
+  return param_struct->child_thread_coord;
+}
+
+/* A thread function that loads a user process and starts it running. */
+static void
+start_process (void *param_struct) 
+{
+  enum intr_level old_level = intr_disable ();
+  /* Extract function parameter from param_struct and free it after use. */
+  struct start_process_param *param = param_struct;
+  void *file_name = get_file_from_info (param);
+  struct child_thread_coord *cur_coord = get_coord_from_info (param);
+  thread_current ()->child_thread_coord = cur_coord;
+  free (param);
+
+  /* Create a new file_name copy for future uses and set thread's name. */
+  char *sp;
+  char *fn_copy = malloc (strlen (file_name) + 1);
+  strlcpy (fn_copy, file_name, strlen (file_name) + 1);
+  file_name = strtok_r (file_name, " ", &sp);
+  strlcpy (thread_current ()->name, file_name, strlen (file_name) + 1);
+  
   /* Initialize interrupt frame and load executable. */
+  struct intr_frame if_;
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  intr_set_level (old_level);
 
-  /* If load failed, quit. */
+  /* Load the executable and free the page after use. */
+  bool success;
+  success = load (file_name, &if_.eip, &if_.esp);  
   palloc_free_page (file_name);
+
   if (!success) 
+  {
+    /* Child fails to load, set exit status, child_is_terminated to true
+    and sema_up to let parent to free the coord resources. */
+    cur_coord->tid = TID_ERROR;
+    cur_coord->exit_status = -1;
+    cur_coord->child_is_terminated = true;
+    sema_up (&cur_coord->sema);
     thread_exit ();
+    NOT_REACHED ();
+  }
+  else
+  {    
+    /* Tokenise file_name and arguments. */
+    int argc = 0;
+    int *argv = palloc_get_page(PAL_USER);
+    void *start_ptr = if_.esp;
+    char *token = strtok_r (fn_copy, " ", &sp);
+    while (token != NULL)
+    {
+      if_.esp -= (strlen (token)+1);     
+      // printf("%d\n", (start_ptr - if_.esp)); 
+      if ((start_ptr - if_.esp) >= PGSIZE || argc > PGSIZE)
+      {
+        exit_handler(-1);
+      }
+      memcpy (if_.esp, token, strlen (token)+1); /* Push tokens onto stack. */
+      argv[argc++] = (int) if_.esp;          /* Store token pointers as int. */
+      // puts(token);
+      token = strtok_r (NULL, " ", &sp);
+    }
+    // for (int i = 0; i < argc; i++)
+    // {
+    //   printf("pt:%x\n", argv[i]);
+    // }
+    // printf("hi");
+    
+    if_.esp = (void *) push_arguments ((int *)start_ptr, (int *)if_.esp, argc, argv);
+    palloc_free_page(argv);
+
+    //set coord tid
+    cur_coord->tid = thread_current ()->tid;
+    sema_up (&cur_coord->sema);
+  }
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -76,32 +202,178 @@ start_process (void *file_name_)
   NOT_REACHED ();
 }
 
+/* Basic stack pushing. */
+static int *push_arguments (int *start_ptr, int *esp, int argc, int argv[])
+{
+    /* Word-alignment. */
+    esp = (void *) ( (intptr_t) esp & 0xfffffffc);
+    // printf("%d\n", (start_ptr - esp) * 4);
+    if ((start_ptr - esp) * 4 >= PGSIZE)
+    {
+      exit_handler(-1);
+    }
+
+    /* Push null pointer. */
+    esp--;
+    // printf("%d\n", (start_ptr - esp) * 4);
+    if ((start_ptr - esp) * 4 >= PGSIZE)
+    {
+      exit_handler(-1);
+    }
+    * (int *) esp = 0;
+
+    /* Push token addresses onto stack. */
+    for (int i = argc - 1; i >= 0; i--)
+    {
+      esp--;
+    // printf("%d\n", (start_ptr - esp) * 4);
+      if ((start_ptr - esp) * 4 >= PGSIZE)
+      {
+        exit_handler(-1);
+      }
+      * (int *) esp = (int) argv[i];
+    }
+
+    /* Push argv and argc. */
+    int *argv_pt = esp;
+    esp--;
+    // printf("%d\n", (start_ptr - esp) * 4);
+    if ((start_ptr - esp) * 4 >= PGSIZE)
+    {
+      exit_handler(-1);
+    }
+    *esp = (int) argv_pt;
+    esp--;
+    // printf("%d\n", (start_ptr - esp) * 4);
+    if ((start_ptr - esp) * 4 >= PGSIZE)
+    {
+      exit_handler(-1);
+    }
+    * (int *) esp = argc;
+
+    /* Push return address. */
+    esp--;
+    // printf("%d\n", (start_ptr - esp) * 4);
+    if ((start_ptr - esp) * 4 >= PGSIZE)
+    {
+      exit_handler(-1);
+    }
+    * (int *) esp = 0;  /* Fake return address. */
+
+    // hex_dump(esp, esp, 5120, true);
+    return esp;
+}
+
+
 /* Waits for thread TID to die and returns its exit status. 
  * If it was terminated by the kernel (i.e. killed due to an exception), 
  * returns -1.  
  * If TID is invalid or if it was not a child of the calling process, or if 
- * process_wait() has already been successfully called for the given TID, 
+ * process_wait () has already been successfully called for the given TID, 
  * returns -1 immediately, without waiting.
  * 
  * This function will be implemented in task 2.
  * For now, it does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
-  return -1;
+  enum intr_level old_level = intr_disable ();
+
+  /* Verify child, chid thread must be direct childeren (threads waited on will 
+    be removed from list). */
+  struct child_thread_coord *child_coord = NULL;
+  struct list *children = &thread_current ()->children;
+  if (!list_empty (children)){
+    struct list_elem *child = list_front (children);
+    while (child != list_end (children)) {
+      struct child_thread_coord 
+        *coord = list_entry (child, struct child_thread_coord, child_elem);
+      if (coord->tid == child_tid)
+      {
+        child_coord = coord;
+        if (child_coord->waited){
+          return -1;
+        }
+        else{
+          child_coord->waited = true;
+        }
+        break;
+      }
+      child = list_next (child);
+    }
+  }
+
+  // Can't find children's tid in the children list.
+  if (child_coord == NULL) {
+    return -1;
+  }
+
+  intr_set_level (old_level);
+  /* Situation 1: Child is not terminated
+          The sema in child_thread_coord will block parent thread until it
+          terminate and called sema_up (). 
+    Situation 2: Child is terminated
+          sema_up () is called when the child thread is terminated, thus parent 
+          thread will not be blocked and acquire child's exit_status. */
+  sema_down (&child_coord->sema);
+
+  old_level = intr_disable ();
+
+  /* Parent thread is unblocked, get exit_status, free its child's thread_coord 
+  and remove the thread_coord from parent's children_list. */
+  int ret = child_coord->exit_status;
+  free_child_coord (child_coord);
+  intr_set_level (old_level);
+
+  return ret;
 }
 
 /* Free the current process's resources. */
 void
 process_exit (void)
 {
+  enum intr_level old_level = intr_disable ();
+
+  /* Set the exit_code its child_thead_coord. */
   struct thread *cur = thread_current ();
-  uint32_t *pd;
+  struct child_thread_coord *cur_coord = cur->child_thread_coord;
+  cur_coord->exit_status = cur->exit_code;
+
+  /* Free all the child coord which child has have terminated. */
+  struct list *children_list = &thread_current ()->children;
+  if (!list_empty (children_list)){
+    struct list_elem *e = list_front (children_list);
+    while (e != list_end (children_list)) {
+      struct child_thread_coord *child_coord = list_entry (e, struct child_thread_coord, child_elem);
+      child_coord->parent_is_terminated = true;
+      struct list_elem *e_next = list_next (e);
+      if (child_coord->child_is_terminated)
+      {
+        free_child_coord (child_coord);
+      }
+      e = e_next;
+    }
+  }
+
+  filesys_lock ();
+  struct list *fd_ref_list = &thread_current ()->fd_ref;
+  if (!list_empty (fd_ref_list)) {
+    struct list_elem *e = list_front (fd_ref_list);
+    while (e != list_end (fd_ref_list)) {
+      struct fd_elem_struct *open_file = list_entry (e, struct fd_elem_struct, fd_elem);
+      file_close (open_file->file_ref);
+      e = list_next (e);
+      free (open_file);
+    }
+  }
+  file_close (cur->process_file);
+  filesys_unlock ();
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
+  uint32_t *pd;
   pd = cur->pagedir;
-  if (pd != NULL) 
+  if (pd != NULL)
     {
       /* Correct ordering here is crucial.  We must set
          cur->pagedir to NULL before switching page directories,
@@ -114,6 +386,16 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+
+  cur_coord->child_is_terminated = true;
+  /* Free struct child_thread_coord if current thread is an orphan. */
+  if (cur_coord->parent_is_terminated) {
+      free_child_coord (cur_coord);
+      return;
+  }
+
+  intr_set_level (old_level);
+  sema_up (&cur->child_thread_coord->sema);
 }
 
 /* Sets up the CPU for running user code in the current
@@ -139,7 +421,7 @@ process_activate (void)
 typedef uint32_t Elf32_Word, Elf32_Addr, Elf32_Off;
 typedef uint16_t Elf32_Half;
 
-/* For use with ELF types in printf(). */
+/* For use with ELF types in printf (). */
 #define PE32Wx PRIx32   /* Print Elf32_Word in hexadecimal. */
 #define PE32Ax PRIx32   /* Print Elf32_Addr in hexadecimal. */
 #define PE32Ox PRIx32   /* Print Elf32_Off in hexadecimal. */
@@ -219,16 +501,21 @@ load (const char *file_name, void (**eip) (void), void **esp)
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL) 
     goto done;
+
   process_activate ();
 
   /* Open executable file. */
+  filesys_lock ();
   file = filesys_open (file_name);
+  thread_current ()->process_file = file;
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
 
+  file_deny_write (file);
+ 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -310,13 +597,14 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
   success = true;
 
+
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+  filesys_unlock ();
   return success;
 }
 
-/* load() helpers. */
+/* load () helpers. */
 
 static bool install_page (void *upage, void *kpage, bool writable);
 
@@ -326,7 +614,7 @@ static bool
 validate_segment (const struct Elf32_Phdr *phdr, struct file *file) 
 {
   /* p_offset and p_vaddr must have the same page offset. */
-  if ((phdr->p_offset & PGMASK) != (phdr->p_vaddr & PGMASK)) 
+  if ( (phdr->p_offset & PGMASK) != (phdr->p_vaddr & PGMASK)) 
     return false; 
 
   /* p_offset must point within FILE. */
@@ -343,9 +631,9 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
   
   /* The virtual memory region must both start and end within the
      user address space range. */
-  if (!is_user_vaddr ((void *) phdr->p_vaddr))
+  if (!is_user_vaddr ( (void *) phdr->p_vaddr))
     return false;
-  if (!is_user_vaddr ((void *) (phdr->p_vaddr + phdr->p_memsz)))
+  if (!is_user_vaddr ( (void *) (phdr->p_vaddr + phdr->p_memsz)))
     return false;
 
   /* The region cannot "wrap around" across the kernel virtual
@@ -357,7 +645,7 @@ validate_segment (const struct Elf32_Phdr *phdr, struct file *file)
      Not only is it a bad idea to map page 0, but if we allowed
      it then user code that passed a null pointer to system calls
      could quite likely panic the kernel by way of null pointer
-     assertions in memcpy(), etc. */
+     assertions in memcpy (), etc. */
   if (phdr->p_vaddr < PGSIZE)
     return false;
 
@@ -383,7 +671,7 @@ static bool
 load_segment (struct file *file, off_t ofs, uint8_t *upage,
               uint32_t read_bytes, uint32_t zero_bytes, bool writable) 
 {
-  ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
+  ASSERT ( (read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
 
@@ -418,8 +706,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       } else {
         
         /* Check if writable flag for the page should be updated */
-        if(writable && !pagedir_is_writable(t->pagedir, upage)){
-          pagedir_set_writable(t->pagedir, upage, writable); 
+        if (writable && !pagedir_is_writable (t->pagedir, upage)){
+          pagedir_set_writable (t->pagedir, upage, writable); 
         }
         
       }
@@ -449,7 +737,7 @@ setup_stack (void **esp)
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
   if (kpage != NULL) 
     {
-      success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+      success = install_page ( ( (uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
         *esp = PHYS_BASE;
       else
@@ -464,7 +752,7 @@ setup_stack (void **esp)
    otherwise, it is read-only.
    UPAGE must not already be mapped.
    KPAGE should probably be a page obtained from the user pool
-   with palloc_get_page().
+   with palloc_get_page ().
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
 static bool

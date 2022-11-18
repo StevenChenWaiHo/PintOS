@@ -4,7 +4,7 @@
 #include <debug.h>
 #include <list.h>
 #include <stdint.h>
-#include "threads/fixed-point.h"
+#include "threads/synch.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -24,10 +24,6 @@ typedef int tid_t;
 #define PRI_MIN 0                       /* Lowest priority. */
 #define PRI_DEFAULT 31                  /* Default priority. */
 #define PRI_MAX 63                      /* Highest priority. */
-
-#define NICE_MIN -20                    /* Lowest niceness. */
-#define NICE_DEFAULT 0                  /* Default niceness. */
-#define NICE_MAX 20                     /* Highest niceness. */
 
 /* A kernel thread or user process.
 
@@ -92,27 +88,45 @@ struct thread
     enum thread_status status;          /* Thread state. */
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
-    struct thread *donee;               /* Lock that the thread is waiting on */
-    int curr_priority;                  /* Current Priority. */
-    int base_priority;                  /* Based Priority.(Not used in mlfqs) */
-    int nice;                           /* Thread niceness. */
-    fixed_int recent_cpu;               /* CPU time received recently. */
-    struct list donor_list;             /* List of all donor threads. */
-    int64_t last_wake;                  /* Records last wake time. */
+    int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
-    struct list_elem donorelem;         /* List element for donor_list. */
-    struct list_elem lock_donor_elem;   /* List element for a locks's donors. */
-   
+
+   /* probably should not be defined here */
+    struct list children;                             /* children of parent thread */
+
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
-    uint32_t *pagedir;                  /* Page directory. */
+    uint32_t *pagedir;                                /* Page directory. */
+    struct child_thread_coord *child_thread_coord;    /* child thread's child thread coordinator */
+   //  struct list children;                          /* children of parent thread */
+    int exit_code;
+    int curr_fd;
+    struct list fd_ref;
+    struct file *process_file;
 #endif
-
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+  };
+
+struct child_thread_coord
+   {
+      tid_t tid;                       /* child thread's tid */
+      int exit_status;                 /* exit status of child thread 0 for success */
+      struct semaphore sema;           /* blocks parent thread if parent waits for child */
+      bool parent_is_terminated;
+      bool child_is_terminated;
+      bool waited;
+      struct list_elem child_elem; /* list elem for list children in parent process */
+   };
+
+struct fd_elem_struct
+  {
+    int fd;
+    struct file *file_ref;
+    struct list_elem fd_elem;
   };
 
 /* If false (default), use round-robin scheduler.
@@ -135,10 +149,12 @@ void thread_unblock (struct thread *);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);
+struct thread *thread_search_tid (tid_t);
 const char *thread_name (void);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);
+
 /* Performs some operation on thread t, given auxiliary data AUX. */
 typedef void thread_action_func (struct thread *t, void *aux);
 void thread_foreach (thread_action_func *, void *);
@@ -150,18 +166,5 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
-void recalculate_recent_cpu(struct thread *t, void *aux);
-int thread_update_priority_mlfqs(struct thread *thread);
-
-int thread_compute_priority(struct thread *);
-/* Priority sort for sorting a list. */
-bool priority_sort(const struct list_elem *a, const struct list_elem *b
-   , void *aux UNUSED);
-/* Yields that accounts for priority and external interrupt. */
-void thread_priority_yield(void);
-
-/* Computes thread's highest effective priority. */
-int thread_compute_priority(struct thread *);
-
 
 #endif /* threads/thread.h */
