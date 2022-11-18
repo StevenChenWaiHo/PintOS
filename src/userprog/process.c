@@ -21,11 +21,11 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
-#define MAX_ARGS_NO 50
+#define MAX_ARGS_NO 500
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-static int *push_arguments (int *esp, int argc, int *argv);
+static int *push_arguments (int *start_ptr, int *esp, int argc, int *argv);
 static void *get_file_from_info (struct start_process_param *param_struct);
 static struct child_thread_coord 
   *get_coord_from_info (struct start_process_param *param_struct);
@@ -165,16 +165,27 @@ start_process (void *param_struct)
     /* Tokenise file_name and arguments. */
     int argc = 0;
     int argv[MAX_ARGS_NO];
+    void *start_ptr = if_.esp;
     char *token = strtok_r (fn_copy, " ", &sp);
     while (token != NULL)
     {
       if_.esp -= (strlen (token)+1);
       memcpy (if_.esp, token, strlen (token)+1); /* Push tokens onto stack. */
       argv[argc++] = (int) if_.esp;          /* Store token pointers as int. */
-
+      if ((start_ptr - if_.esp) >= PGSIZE)
+      {
+        exit_handler(-1);
+      }
+      puts(token);
       token = strtok_r (NULL, " ", &sp);
     }
-    if_.esp = (void *) push_arguments ( (int *)if_.esp, argc, argv);
+    for (int i = 0; i < argc; i++)
+    {
+      printf("pt:%x\n", argv[i]);
+    }
+    printf("hi");
+    
+    if_.esp = (void *) push_arguments ((int *)start_ptr, (int *)if_.esp, argc, argv);
 
     //set coord tid
     cur_coord->tid = thread_current ()->tid;
@@ -192,10 +203,16 @@ start_process (void *param_struct)
 }
 
 /* Basic stack pushing. */
-static int *push_arguments (int *esp, int argc, int argv[])
+static int *push_arguments (int *start_ptr, int *esp, int argc, int argv[])
 {
     /* Word-alignment. */
     esp = (void *) ( (intptr_t) esp & 0xfffffffc);
+    int diff = start_ptr - esp;
+    printf("%d\n", diff);
+    if (diff >= PGSIZE)
+      {
+        exit_handler(-1);
+      }
 
     /* Push null pointer. */
     esp--;
