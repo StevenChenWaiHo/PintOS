@@ -8,6 +8,8 @@
 
 typedef int pid_t;
 
+void filesys_lock (void);
+void filesys_unlock (void);
 void syscall_init (void);
 void exit_handler (int);
 
