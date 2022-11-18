@@ -23,6 +23,7 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
+static void check_pointer (int *start_ptr, int *esp);
 static int *push_arguments (int *start_ptr, int *esp, int argc, int *argv);
 static void *get_file_from_info (struct start_process_param *param_struct);
 static struct child_thread_coord 
@@ -202,62 +203,48 @@ start_process (void *param_struct)
   NOT_REACHED ();
 }
 
+static void check_pointer (int *start_ptr, int *esp)
+{
+  // printf("%d\n", (void *)start_ptr - (void *)esp);
+  if ((void *)start_ptr - (void *)esp >= PGSIZE)
+  {
+    exit_handler(-1);
+  }
+}
+
 /* Basic stack pushing. */
 static int *push_arguments (int *start_ptr, int *esp, int argc, int argv[])
 {
     /* Word-alignment. */
     esp = (void *) ( (intptr_t) esp & 0xfffffffc);
-    // printf("%d\n", (start_ptr - esp) * 4);
-    if ((start_ptr - esp) * 4 >= PGSIZE)
-    {
-      exit_handler(-1);
-    }
+    check_pointer(start_ptr, esp);
 
     /* Push null pointer. */
     esp--;
     // printf("%d\n", (start_ptr - esp) * 4);
-    if ((start_ptr - esp) * 4 >= PGSIZE)
-    {
-      exit_handler(-1);
-    }
+    check_pointer(start_ptr, esp);
     * (int *) esp = 0;
 
     /* Push token addresses onto stack. */
     for (int i = argc - 1; i >= 0; i--)
     {
       esp--;
-    // printf("%d\n", (start_ptr - esp) * 4);
-      if ((start_ptr - esp) * 4 >= PGSIZE)
-      {
-        exit_handler(-1);
-      }
+      check_pointer(start_ptr, esp);
       * (int *) esp = (int) argv[i];
     }
 
     /* Push argv and argc. */
     int *argv_pt = esp;
     esp--;
-    // printf("%d\n", (start_ptr - esp) * 4);
-    if ((start_ptr - esp) * 4 >= PGSIZE)
-    {
-      exit_handler(-1);
-    }
+    check_pointer(start_ptr, esp);
     *esp = (int) argv_pt;
     esp--;
-    // printf("%d\n", (start_ptr - esp) * 4);
-    if ((start_ptr - esp) * 4 >= PGSIZE)
-    {
-      exit_handler(-1);
-    }
+    check_pointer(start_ptr, esp);
     * (int *) esp = argc;
 
     /* Push return address. */
     esp--;
-    // printf("%d\n", (start_ptr - esp) * 4);
-    if ((start_ptr - esp) * 4 >= PGSIZE)
-    {
-      exit_handler(-1);
-    }
+    check_pointer(start_ptr, esp);
     * (int *) esp = 0;  /* Fake return address. */
 
     // hex_dump(esp, esp, 5120, true);
