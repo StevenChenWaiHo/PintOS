@@ -1,4 +1,0 @@
-Robustness of argument passing from syscalls:
-- Test robustness of "exec" system calls.
-5	exec-over-arg
-5	exec-over-args
