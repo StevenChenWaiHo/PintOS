@@ -89,8 +89,8 @@ tests/userprog/wait-simple_SRC = tests/userprog/wait-simple.c tests/main.c
 tests/userprog/wait-twice_SRC = tests/userprog/wait-twice.c tests/main.c
 tests/userprog/wait-killed_SRC = tests/userprog/wait-killed.c tests/main.c
 tests/userprog/wait-load-kill_SRC = tests/userprog/wait-load-kill.c tests/main.c
-tests/userprog/wait-bad-child_SRC = tests/userprog/wait-bad-pid.c tests/main.c
-tests/userprog/wait-bad-pid_SRC = tests/userprog/wait-bad-child.c tests/main.c
+tests/userprog/wait-bad-child_SRC = tests/userprog/wait-bad-child.c tests/main.c
+tests/userprog/wait-bad-pid_SRC = tests/userprog/wait-bad-pid.c tests/main.c
 tests/userprog/multi-recurse_SRC = tests/userprog/multi-recurse.c
 tests/userprog/multi-child-fd_SRC = tests/userprog/multi-child-fd.c	\
 tests/main.c

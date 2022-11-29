@@ -116,6 +116,10 @@ syscall_handler (struct intr_frame *f) {
   int arg_count = 1;
   int sys_call_num = *p;
 
+  if (sys_call_num >= SYS_CALL_NUM) {
+    exit_handler (-1);
+  } 
+
   if (sys_call_num == SYS_HALT)
     sys_call[SYS_HALT] (args, return_p);
 
