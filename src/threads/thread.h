@@ -107,6 +107,11 @@ struct thread
     struct list fd_ref;
     struct file *process_file;
 #endif
+
+#ifdef VM
+   struct list_elem frame_elem;              /* List element. */
+#endif
+
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
