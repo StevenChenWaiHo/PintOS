@@ -2,6 +2,7 @@
 #define THREADS_THREAD_H
 
 #include <debug.h>
+#include <hash.h>
 #include <list.h>
 #include <stdint.h>
 #include "threads/synch.h"
@@ -107,6 +108,11 @@ struct thread
     struct list fd_ref;
     struct file *process_file;
 #endif
+
+//#ifdef VM
+    struct hash spt;
+//#endif
+
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
