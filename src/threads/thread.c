@@ -1,5 +1,6 @@
 #include "threads/thread.h"
 #include <debug.h>
+#include <hash.h>
 #include <stddef.h>
 #include <random.h>
 #include <stdio.h>
@@ -219,6 +220,10 @@ thread_create (const char *name, int priority,
   #ifdef USERPROG
     list_init (&t->fd_ref);
     t->curr_fd = 2;
+  #endif
+
+  #ifdef VM
+    hash_init (&t->spt);
   #endif
   return tid;
 }
