@@ -109,9 +109,10 @@ struct thread
     struct file *process_file;
 #endif
 
-//#ifdef VM
-    struct hash spt;
-//#endif
+#ifdef VM
+   struct list_elem frame_elem;              /* List element. */
+#endif
+   struct hash spt;
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
