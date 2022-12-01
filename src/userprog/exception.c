@@ -4,7 +4,9 @@
 #include "userprog/gdt.h"
 #include "userprog/syscall.h"
 #include "threads/interrupt.h"
+#include "threads/pte.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -124,6 +126,9 @@ page_fault (struct intr_frame *f)
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
+  void *fault_page;  /* Fault page. */
+  // placeholder
+  struct page *page; 
 
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
@@ -146,9 +151,41 @@ page_fault (struct intr_frame *f)
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
 
-  if (user) {
-    exit_handler (ERROR);
+  /* Get page from fault_addr. */
+  fault_page = (void *) (PTE_ADDR & (uint32_t) fault_addr);
+
+  if (user && !is_user_vaddr(fault_addr)) {
+    exit_handler(-1);
   }
+  
+  /*placeholders, handle in page.c/vm.c?
+  page = vm_get(fault_page);
+
+  // write incompatible
+  if (page != NULL && write && !page.writable) {
+    exit_handler(-1);
+  }
+
+  // load from vm fails
+  if (page != NULL && !vm_load(page)) {
+    exit_handler(-1);
+    ret?
+  }
+
+  // addr in stack but no page
+  if (in_stack(fault_addr) && !get_frame_page(fault_addr)) {
+    exit_handler(-1);
+    ret?
+  }
+
+  // if above did not return:
+  if (user || not_present) {
+    exit_handler(-1);
+  }
+
+  // change stackpointer?
+  // change next instruction?
+  */
 
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
