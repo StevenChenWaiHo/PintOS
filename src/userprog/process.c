@@ -21,6 +21,8 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#include "vm/frame.h"
+
 /* Extra argument counts used in argument passing, containing null pointer,
    pointer to argv, argc, return adr. */
 #define EXTRA_ARGS_NO 4   
@@ -686,7 +688,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (kpage == NULL){
         
         /* Get a new page of memory. */
-        kpage = palloc_get_page (PAL_USER);
+        kpage = get_frame (PAL_USER, upage);
         if (kpage == NULL){
           return false;
         }
@@ -694,7 +696,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         /* Add the page to the process's address space. */
         if (!install_page (upage, kpage, writable)) 
         {
-          palloc_free_page (kpage);
+          free_frame (kpage);
           return false; 
         }     
         
@@ -727,16 +729,17 @@ static bool
 setup_stack (void **esp) 
 {
   uint8_t *kpage;
+  uint8_t *upage = ((uint8_t *)PHYS_BASE) - PGSIZE;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  kpage = get_frame (PAL_USER | PAL_ZERO, upage);
   if (kpage != NULL) 
     {
-      success = install_page ( ( (uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
+      success = install_page (upage, kpage, true);
       if (success)
         *esp = PHYS_BASE;
       else
-        palloc_free_page (kpage);
+        free_frame (kpage);
     }
   return success;
 }
