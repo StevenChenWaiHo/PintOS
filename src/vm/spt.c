@@ -85,11 +85,24 @@ spt_pf_handler (void *fault_addr, struct intr_frame *f) {
 
   if (entry == NULL || is_kernel_vaddr (fault_addr) || !not_present
     || (write && !entry->writable)) {
+    if (entry == NULL) {
+      printf("Can't find entry.\n");
+    }
+    if (is_kernel_vaddr (fault_addr)) {
+      printf("Access kernel addr.\n");
+    }
+    if (!not_present) {
+      printf("Write to existing r-o page.\n");
+    }
+    if (write && !entry->writable) {
+      printf("Write to file r-o page.\n");
+    }
     return false;
   } else {
     //Obtain frame here.
     void *frame_pt = get_frame (PAL_USER, fault_page);
     if (frame_pt == NULL) {
+      printf("Dying due to frame.");
       return false;
     } else {
       if (entry->location == FILE_SYS) {
@@ -100,11 +113,14 @@ spt_pf_handler (void *fault_addr, struct intr_frame *f) {
         if (entry->zbytes == PGSIZE) {
           zero_from (frame_pt, PGSIZE);
         } else if (!read_segment_from_file (entry, frame_pt)) {
+          printf("Dying due to read to file.");
           return false;
         }
         if (!pagedir_set_page (
-            thread_current()->pagedir, fault_page, frame_pt, entry->writable))
+            thread_current()->pagedir, fault_page, frame_pt, entry->writable)) {
+          printf("Dying due to setpage.");
           return false;
+        }
       }
       if (entry->location == SWAP) {
         //Takes information in swap disk thru swap_in
