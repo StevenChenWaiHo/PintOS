@@ -110,9 +110,9 @@ struct thread
 #endif
 
 #ifdef VM
-   struct list_elem frame_elem;              /* List element. */
+    struct list_elem frame_elem;              /* List element. */
 #endif
-   struct hash spt;
+    struct hash spt;
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */

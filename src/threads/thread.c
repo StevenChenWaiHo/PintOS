@@ -15,6 +15,7 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
+#include "vm/spt.h"
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -223,7 +224,7 @@ thread_create (const char *name, int priority,
   #endif
 
   #ifdef VM
-    hash_init (&t->spt);
+    spt_init ();
   #endif
   return tid;
 }
