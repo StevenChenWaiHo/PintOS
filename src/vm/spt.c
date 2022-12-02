@@ -1,6 +1,7 @@
 #include "vm/spt.h"
-#include <stdio.h>
 #include <hash.h>
+#include <stdio.h>
+#include <string.h>
 #include "devices/swap.h"
 #include "filesys/file.h"
 #include "userprog/exception.h"
@@ -10,13 +11,18 @@
 #include "threads/interrupt.h"
 #include "threads/pte.h"
 #include "threads/thread.h"
+#include "threads/malloc.h"
 #include "threads/vaddr.h"
+#include "vm/frame.h"
 
 static unsigned spt_hash (const struct hash_elem *, void *);
 static bool spt_less (const struct hash_elem *, 
                       const struct hash_elem *,
                       void *);
 static struct hash *cur_spt (void);
+static void spt_destroy_single (struct hash_elem *, void *);
+static void zero_from (void *, int);
+static bool read_segment_from_file (struct spt_entry *, void *);
 
 bool
 spt_init () {
@@ -33,6 +39,8 @@ spt_insert (struct spt_entry *entry) {
   return e != NULL;
 }
 
+/* Search for spt_entry with upage as key,
+  return NULL if not found. */
 struct spt_entry *
 spt_lookup (void *upage) {
   struct spt_entry dummy;
@@ -55,7 +63,8 @@ spt_remove (void *upage) {
   return e != NULL;
 }
 
-void spt_destroy_single (struct hash_elem *e, void *aux) {
+static void
+spt_destroy_single (struct hash_elem *e, void *aux UNUSED) {
   //Do something when freeing all
 }
 
@@ -79,36 +88,47 @@ spt_pf_handler (void *fault_addr, struct intr_frame *f) {
     return false;
   } else {
     //Obtain frame here.
-    void *frame_pt = get_frame (fault_page);
-    if (frame_pt) {
-      if (entry->location == FILESYS) {
-        //Lazy loading..
-        if (!install_page (fault_page, frame_pt, entry->writable)) {
-          //Fetch the data into the frame from the file.
-          read_segment_from_file (entry, frame_pt);
-          //Point PTE to the frame.
-          pagedir_set_page (thread_current()->pagedir,
-                            fault_page, frame_pt, entry->writable);
-        } else {
-          
+    void *frame_pt = get_frame (PAL_USER, fault_page);
+    if (frame_pt == NULL) {
+      return false;
+    } else {
+      if (entry->location == FILE_SYS) {
+        // Lazy loading..
+        /* Either zero-out page,
+          or fetch the data into the frame from the file,
+          then point PTE to the frame. */
+        if (entry->zbytes == PGSIZE) {
+          zero_from (frame_pt, PGSIZE);
+        } else if (!read_segment_from_file (entry, frame_pt)) {
+          return false;
         }
+        if (!pagedir_set_page (
+            thread_current()->pagedir, fault_page, frame_pt, entry->writable))
+          return false;
       }
       if (entry->location == SWAP) {
         //Takes information in swap disk thru swap_in
       }
-      if (entry->location == ZERO) {
-
-      }
     }
   }
+  return true;
 }
 
 static void
+zero_from (void *from, int size) {
+  memset (from, 0, PGSIZE);
+}
+
+static bool
 read_segment_from_file (struct spt_entry *entry, void *frame_pt) {
-  //fetch data into the frame
+  //Fetch data into the frame.
   filesys_lock ();
-  file_read ();
+  file_seek (entry->file, entry->ofs);
+  bool read_success = 
+    entry->rbytes == (uint32_t) file_read (entry->file, frame_pt, entry->rbytes);
+  zero_from (frame_pt + entry->rbytes, entry->zbytes);
   filesys_unlock ();
+  return read_success;
 }
 
 static struct hash *cur_spt () {
