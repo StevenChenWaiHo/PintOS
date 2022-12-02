@@ -15,8 +15,8 @@
 #include "threads/vaddr.h"
 #include "vm/frame.h"
 
-static unsigned spt_hash (const struct hash_elem *, void *);
-static bool spt_less (const struct hash_elem *, 
+unsigned spt_hash (const struct hash_elem *, void *);
+bool spt_less (const struct hash_elem *, 
                       const struct hash_elem *,
                       void *);
 static struct hash *cur_spt (void);
@@ -25,8 +25,8 @@ static void zero_from (void *, int);
 static bool read_segment_from_file (struct spt_entry *, void *);
 
 bool
-spt_init () {
-  return hash_init (cur_spt(), spt_hash, spt_less, NULL);
+spt_init (struct thread *t) {
+  return hash_init (&t->spt, spt_hash, spt_less, NULL);
 }
 
 bool
@@ -135,13 +135,13 @@ static struct hash *cur_spt () {
   return &thread_current()->spt;
 }
 
-static unsigned
+unsigned
 spt_hash (const struct hash_elem *e, void *aux UNUSED) {
   const struct spt_entry *entry = hash_entry (e, struct spt_entry, spt_elem);
-  return hash_bytes (entry->upage, sizeof entry->upage);
+  return hash_int (entry->upage);
 }
 
-static bool
+bool
 spt_less (const struct hash_elem *a, const struct hash_elem *b,
           void *aux UNUSED) {
   const struct spt_entry *a_entry = hash_entry (a, struct spt_entry, spt_elem);

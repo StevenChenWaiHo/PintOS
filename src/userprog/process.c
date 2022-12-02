@@ -723,6 +723,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       if (!entry) {
         // No previous entries in SPT, creates one and insert after assign args
         entry = (struct spt_entry *) malloc (sizeof (struct spt_entry));
+        if (entry == NULL) {
+          return false;
+        }
         entry->location = FILE_SYS;
         entry->file = file;
         entry->ofs = ofs;

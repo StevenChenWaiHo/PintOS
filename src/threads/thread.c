@@ -217,14 +217,11 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-
+  
+  spt_init (t);
   #ifdef USERPROG
     list_init (&t->fd_ref);
     t->curr_fd = 2;
-  #endif
-
-  #ifdef VM
-    spt_init ();
   #endif
   return tid;
 }
