@@ -140,7 +140,10 @@ page_fault (struct intr_frame *f)
   intr_enable ();
 
   /* Count page faults. */
+  not_present = (f->error_code & PF_P) == 0;
   page_fault_cnt++;
+
+   printf("exception: fault addr: %p\n", fault_addr);
 
   if (!spt_pf_handler (fault_addr, f)) {
     kill (f);

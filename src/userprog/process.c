@@ -529,6 +529,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
       goto done; 
     }
 
+  printf("(load) pages to load: %d\n", ehdr.e_phnum);
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++) 
@@ -678,6 +679,9 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   //file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
+      printf("load seg: upage %x ", upage);
+      printf(writable? "is writable\n" : "not writable\n");
+
       /* Calculate how to fill this page.
          We will read PAGE_READ_BYTES bytes from FILE
          and zero the final PAGE_ZERO_BYTES bytes. */
@@ -721,6 +725,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* New load_segment with lazy loading. */
       struct spt_entry *entry = spt_lookup (upage);
       if (!entry) {
+        printf("load seg: entry at upage %p not exist\n", upage);
         // No previous entries in SPT, creates one and insert after assign args
         entry = (struct spt_entry *) malloc (sizeof (struct spt_entry));
         if (entry == NULL) {
@@ -736,9 +741,14 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
         spt_insert (entry);
       } else {
         // Previous entry present, update SPT meta-data.
+        printf("Previous entry present, update SPT meta-data.\n");
         if (page_read_bytes != entry->rbytes) {
+          uint32_t old_rb = entry->rbytes;
+          uint32_t old_zb = entry->zbytes;
           entry->rbytes = page_read_bytes;
           entry->zbytes = page_zero_bytes;
+          printf("rb old vs new: %u: %u\n", old_rb, entry->rbytes);
+          printf("zb old vs new: %u: %u\n", old_zb, entry->zbytes);
         }
         if (writable)
           entry->writable = writable;
