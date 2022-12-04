@@ -121,8 +121,8 @@ kill (struct intr_frame *f)
 static void
 page_fault (struct intr_frame *f) 
 {
-  bool not_present;  /* True: not-present page, false: writing r/o page. */
-  bool write;        /* True: access was write, false: access was read. */
+  //bool not_present;  /* True: not-present page, false: writing r/o page. */
+  //bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
 
@@ -140,23 +140,20 @@ page_fault (struct intr_frame *f)
   intr_enable ();
 
   /* Count page faults. */
-  not_present = (f->error_code & PF_P) == 0;
   page_fault_cnt++;
 
-   printf("exception: fault addr: %p\n", fault_addr);
-
+  
+  user = (f->error_code & PF_U) != 0;
   if (!spt_pf_handler (fault_addr, f)) {
-    kill (f);
-    //Maybe smoother exit for user faults?
-    //exit_handler(ERROR);
+    if (user) {
+      exit_handler (ERROR);
+    }
   }
 
   /* To implement virtual memory, delete the contents here,
      and replace it with code that brings in the page to
      which fault_addr refers. 
-  if (user) {
-    exit_handler (ERROR);
-  }
+
   printf ("Page fault at %p: %s error %s page in %s context.\n",
           fault_addr,
           not_present ? "not present" : "rights violation",

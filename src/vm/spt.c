@@ -75,31 +75,31 @@ spt_destroy () {
 
 bool
 spt_pf_handler (void *fault_addr, struct intr_frame *f) {
-  struct lock lock;
-  lock_init(&lock);
-  lock_acquire(&lock);
-  void *fault_page = (void *) (PTE_ADDR & (uint32_t) fault_addr);
-  /*align page*/
-  void * aligned_fault_page = pg_round_down(fault_page);
+  void *fault_page = pg_round_down (fault_addr);
 
+  //printf("\n\nexception: fault addr: %p\n", fault_addr);
+  /*
   if (ft_search_entry(aligned_fault_page)) {
     printf("spt_pf_handler: frame entry for this upage exists.\n");
   }
-
-  printf("##### pagedir is %p\n", pagedir_get_page(thread_current()->pagedir, aligned_fault_page));
-  struct spt_entry *entry = spt_lookup (aligned_fault_page);
-
+  */
+  //printf("##### pagedir is %p\n", pagedir_get_page(thread_current()->pagedir, aligned_fault_page));
+  struct spt_entry *entry = spt_lookup (fault_page);
+  /*
+  printf("spt_pf: upage = %p;  ", fault_page);
+  if (entry)
+    printf(entry->writable? "w\n" : "n/w\n");
+  else
+    printf("no entry.\n");
+  */
   /* Determine cause. */
   bool not_present = (f->error_code & PF_P) == 0;
   bool write = (f->error_code & PF_W) != 0;
   bool user = (f->error_code & PF_U) != 0;
 
-  printf("spt_pf_handler: upage addr : %p\n", pg_round_down(fault_addr));
-  printf("spt_pf_handler: ");
-  printf(entry->writable? "is writable\n" : "not writable\n");
-
-    if (entry == NULL || is_kernel_vaddr (fault_addr) || !not_present
+  if (entry == NULL || is_kernel_vaddr (fault_addr) || !not_present
     || (write && !entry->writable)) {
+    /*
     if (entry == NULL) {
       printf("Can't find entry.\n");
     }
@@ -107,20 +107,24 @@ spt_pf_handler (void *fault_addr, struct intr_frame *f) {
       printf("Access kernel addr.\n");
     }
     if (!not_present) {
-      printf("Write to existing page.\n");
+      printf("Writing r/o page.\n");
     }
     if (write && !entry->writable) {
-      printf("Write to file r-o page.\n");
+      printf("Write to FILESYS r-o page.\n");
     }
-    lock_release(&lock);
+    if (user) {
+      printf("User fault!\n");
+    } else {
+      printf("Kernel fault!\n");
+    }
+    */
     return false;
   } else {
     /*allocate frame if frame not previously allocated.*/
     void *frame_pt = get_frame (PAL_USER, entry->upage);
-    printf("frame kpage: %p\n", frame_pt); 
+    //printf("frame kpage: %p\n", frame_pt); 
     if (frame_pt == NULL) {
-      printf("Dying due to frame.\n");
-      lock_release(&lock);
+      //printf("Dying due to frame.\n");
       return false;
     } else {
       if (entry->location == FILE_SYS) {
@@ -131,8 +135,7 @@ spt_pf_handler (void *fault_addr, struct intr_frame *f) {
         if (entry->zbytes == PGSIZE) {
           zero_from (frame_pt, PGSIZE);
         } else if (!read_segment_from_file (entry, frame_pt)) {
-          printf("Dying due to read to file.\n");
-          lock_release(&lock);
+          //printf("Dying due to read to file.\n");
           return false;
         }
         /**
@@ -142,8 +145,7 @@ spt_pf_handler (void *fault_addr, struct intr_frame *f) {
          **/
         if (!pagedir_set_page (
             thread_current()->pagedir, fault_page, frame_pt, entry->writable)) {
-          printf("Dying due to setpage.");
-          lock_release(&lock);
+          //printf("Dying due to setpage.\n");
           return false;
         }
       }
@@ -152,7 +154,7 @@ spt_pf_handler (void *fault_addr, struct intr_frame *f) {
       }
     }
   }
-  lock_release(&lock);
+  //printf("---------LAZY LOADING COMPLETE---------\n\n");
   return true;
 }
 

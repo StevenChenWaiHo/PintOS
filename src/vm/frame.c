@@ -51,7 +51,7 @@ get_frame(enum palloc_flags flag, void *user_page)
     list_push_back(&entry->owners, &thread_current()->frame_elem);
     hash_insert(&ft, &entry->ft_elem);
     lock_release(&ft_lock);
-    printf("get frame: kpage : upage %p : %p \n", kernel_page, user_page);
+    //printf("get frame: kpage : upage %p : %p \n", kernel_page, user_page);
     return kernel_page;    
 }
 
