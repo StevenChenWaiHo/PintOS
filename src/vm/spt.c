@@ -75,7 +75,8 @@ spt_destroy () {
 
 bool
 lazy_load (struct file *file, off_t ofs, uint8_t *upage,
-          uint32_t read_bytes, uint32_t zero_bytes, bool writable) {
+          uint32_t read_bytes, uint32_t zero_bytes, bool writable,
+          enum page_location location) {
   /*
   printf("loading ");
   printf(writable? "w " : "n/w ");
@@ -133,7 +134,7 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
       if (entry == NULL) {
         return false;
       }
-      entry->location = FILE_SYS;
+      entry->location = location;
       entry->file = file;
       entry->ofs = ofs;
       entry->rbytes = page_read_bytes;
@@ -142,7 +143,7 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
       entry->writable = writable;
       spt_insert (entry);
     } else {
-      // Previous entry present, update SPT meta-data.
+      // Previous entry present, update SPT meta-data (load_segment).
       //printf("Previous entry present, update SPT meta-data.\n");
       if (page_read_bytes != entry->rbytes) {
         uint32_t old_rb = entry->rbytes;

@@ -38,12 +38,15 @@ static void mmap        (uint32_t *, uint32_t *);
 static void munmap      (uint32_t *, uint32_t *);
 
 void syscall_init (void);
+static void syscall_handler (struct intr_frame *);
+
 static struct file *fd_search (int);
 static struct file_record *fd_search_struct (int);
 static void fd_destroy (int);
 static struct file_record *mm_search_struct (int);
 static struct file_record *search_struct (int, struct list *);
-static void syscall_handler (struct intr_frame *);
+
+static bool mmap_available (void *, int);
 
 /* Function pointer array for system calls. */
 static void (*sys_call[SYS_CALL_NUM]) (uint32_t *, uint32_t *) = {
@@ -344,26 +347,64 @@ close (uint32_t *args, uint32_t *eax UNUSED) {
 }
 
 /* Memory Mapping functions. */
+
+/* Helper function that iterate through every consecutive page of ADDR
+  to check for availability for mapping into memory.*/
+static bool mmap_available (void *addr, int read_bytes) {
+  while (read_bytes > 0) {
+    if (spt_lookup (addr)) {
+      return false;
+    }
+    addr += PGSIZE;
+    read_bytes -= PGSIZE;
+  }
+  return true;
+}
+
+/* Maps a file of descriptor FD to virtual address ADDR. */
 void
 mmap (uint32_t *args, uint32_t *eax) {
   int fd = args[0];
   void *addr = args[1];
-  if (fd >= 2
-    && !pagedir_get_page (thread_current()->pagedir, addr)
-    && pg_ofs (addr) == 0) {
+  /* Checking for fd, addr fails. */
+  if (fd >= 2 && addr != 0 && pg_ofs (addr) == 0) {
     struct file *fp = fd_search (fd);
     if (fp) {
-      int size = file_length (fp);
-      if (size > 0) {
+      int read_bytes = file_length (fp);
+      /* Checking for file size, overlapping pages fails.*/
+      if (read_bytes > 0 && mmap_available (addr, read_bytes)) {
+        int zero_bytes = (read_bytes % PGSIZE == 0) ? 
+          0 : PGSIZE - read_bytes & PGSIZE;
 
+        //Do we assume writable is true here and leave blocking writes to
+        //executable file for deny-writed calls to file_write?
+        lazy_load (fp, 0, addr, read_bytes, zero_bytes, true, MMAP);
+
+        /* Insert MMAP pair into MM_REF,
+          allocating a new MAPID to the mapping. */
+        struct file_record *mm_pair = malloc (sizeof (struct file_record));
+        mm_pair->id = thread_current ()->curr_mapid++;
+        mm_pair->file_ref = fp;
+        mm_pair->mapping_addr = addr;
+        list_push_front (&thread_current ()->mm_ref, &mm_pair->f_elem);
+        *eax = mm_pair->id;
+        return;
       }
-      
     }
   }
-
   *eax = ERROR;
 }
 
+/* Helper function to destroy file descriptor pair when closing a file. */
+static void mm_destroy (mapid_t id) {
+  struct file_record *e = mm_search_struct (id);
+  //Some munmap stuff here
+
+  list_remove (&e->f_elem);
+  free (e);
+}
+
+/* WIP: Unmaps the mapping of id MAPPING. */
 void
 munmap (uint32_t *args, uint32_t *eax) {
   mapid_t mapping = args[0];
@@ -396,15 +437,6 @@ static void fd_destroy (int fd) {
 
 static struct file_record *mm_search_struct (mapid_t id) {
   return search_struct (id, &thread_current ()->mm_ref);
-}
-
-/* Helper function to destroy file descriptor pair when closing a file. */
-static void mm_destroy (mapid_t id) {
-  struct file_record *e = mm_search_struct (id);
-  //Some munmap stuff here
-
-  list_remove (&e->f_elem);
-  free (e);
 }
 
 /* Search function that iterates through the FD_REF list

@@ -219,6 +219,7 @@ thread_create (const char *name, int priority,
   thread_unblock (t);
   
   spt_init (t);
+  t->curr_mapid = 0;
   #ifdef USERPROG
     list_init (&t->fd_ref);
     t->curr_fd = 2;

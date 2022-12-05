@@ -674,7 +674,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT ( (read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
-  return lazy_load (file, ofs, upage, read_bytes, zero_bytes, writable);
+  return
+    lazy_load (file, ofs, upage, read_bytes, zero_bytes, writable, FILE_SYS);
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of
