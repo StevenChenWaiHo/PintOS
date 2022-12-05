@@ -116,7 +116,9 @@ static void
 valid_pointer (const void *uaddr) {
   if (!is_user_vaddr (uaddr)
     || !pagedir_get_page (thread_current ()->pagedir, uaddr)) {
-    if (!spt_pf_handler (uaddr, true, false, true)){
+    struct intr_frame *f = (struct intr_frame *) malloc (sizeof (struct intr_frame));
+    f->error_code = 0x4;
+    if (!spt_pf_handler (uaddr, f)){
       exit_handler (ERROR);
     }
   }

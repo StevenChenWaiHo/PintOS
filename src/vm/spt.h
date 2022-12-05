@@ -10,6 +10,7 @@
 enum page_location
 {
   FILE_SYS,
+  STACK,
   SWAP
 };
 
@@ -31,6 +32,6 @@ struct spt_entry *spt_lookup (void *);
 bool spt_remove (void *);
 void spt_destroy (void);
 
-bool spt_pf_handler (void *, bool, bool, bool);
+bool spt_pf_handler (void *, struct intr_frame *);
 
 #endif
