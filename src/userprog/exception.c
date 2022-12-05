@@ -142,18 +142,21 @@ page_fault (struct intr_frame *f)
   /* Count page faults. */
   page_fault_cnt++;
 
-  if (!spt_pf_handler (fault_addr, f)) {
-    kill (f);
-    //Maybe smoother exit for user faults?
-    //exit_handler(ERROR);
+  /* Determine cause. */
+  not_present = (f->error_code & PF_P) == 0;
+  write = (f->error_code & PF_W) != 0;
+  user = (f->error_code & PF_U) != 0;
+  
+  if (!spt_pf_handler (fault_addr, not_present, write, user)) {
+    if (user) {
+      exit_handler (ERROR);
+    }
   }
 
   /* To implement virtual memory, delete the contents here,
      and replace it with code that brings in the page to
      which fault_addr refers. 
-  if (user) {
-    exit_handler (ERROR);
-  }
+
   printf ("Page fault at %p: %s error %s page in %s context.\n",
           fault_addr,
           not_present ? "not present" : "rights violation",

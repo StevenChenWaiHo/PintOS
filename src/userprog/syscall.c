@@ -12,6 +12,7 @@
 #include "devices/input.h"
 #include "devices/shutdown.h"
 #include "lib/kernel/stdio.h"
+#include "vm/spt.h"
 
 /* Total system calls implemented in Task 2. */
 #define SYS_CALL_NUM 13
@@ -39,6 +40,9 @@ static struct file *fd_search (int);
 static struct fd_elem_struct *fd_search_struct (int);
 static void fd_destroy (int);
 static void syscall_handler (struct intr_frame *);
+
+static bool put_user (uint8_t *, uint8_t);
+static int get_user (const uint8_t *uaddr);
 
 /* Function pointer array for system calls. */
 static void (*sys_call[SYS_CALL_NUM]) (uint32_t *, uint32_t *) = {
@@ -81,6 +85,30 @@ exit_handler (int status) {
   NOT_REACHED ();
 }
 
+/* Reads a byte at user virtual address UADDR.
+UADDR must be below PHYS_BASE.
+Returns the byte value if successful, -1 if a segfault
+occurred. */
+static int
+get_user (const uint8_t *uaddr)
+{
+  int result;
+  asm ("movl $1f, %0; movzbl %1, %0; 1:"
+  : "=&a" (result) : "m" (*uaddr));
+  return result;
+}
+/* Writes BYTE to user address UDST.
+UDST must be below PHYS_BASE.
+Returns true if successful, false if a segfault occurred. */
+static bool
+put_user (uint8_t *udst, uint8_t byte)
+{
+  int error_code;
+  asm ("movl $1f, %0; movb %b2, %1; 1:"
+  : "=&a" (error_code), "=m" (*udst) : "q" (byte));
+  return error_code != -1;
+}
+
 /* Function handling checks to user-provided pointers.
    Calls functions to clear allocated memory to the current process
    and kills the current thread. */
@@ -88,7 +116,9 @@ static void
 valid_pointer (const void *uaddr) {
   if (!is_user_vaddr (uaddr)
     || !pagedir_get_page (thread_current ()->pagedir, uaddr)) {
-    exit_handler (ERROR);
+    if (!spt_pf_handler (uaddr, true, false, true)){
+      exit_handler (ERROR);
+    }
   }
 }
 
@@ -257,7 +287,6 @@ read (uint32_t *args, uint32_t *eax) {
   int fd = args[0];
   void *buffer = args[1];
   off_t size = args[2];
-
 
   valid_buffer (buffer, size);
 
