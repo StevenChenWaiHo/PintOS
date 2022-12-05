@@ -20,13 +20,19 @@ ft_init(void)
     lock_init(&ft_lock);
 }
 
+struct hash *
+get_ft(void)
+{
+    return &ft;
+}
+
 /**
  * returns the frame allocated to the user process frame
  * kernel panic if new page cannot be allocated for now
  * TODO: eviction and replace* 
 */
 void *
-get_frame(enum palloc_flags flag, void *user_page)
+get_frame(enum palloc_flags flag, void *user_page, struct file *file)
 {
     lock_acquire(&ft_lock);
     void *kernel_page = palloc_get_page(flag);
@@ -47,6 +53,7 @@ get_frame(enum palloc_flags flag, void *user_page)
     }
     entry->kernel_page = kernel_page;
     entry->user_page = user_page;
+    entry->file = file;
     list_init(&entry->owners);
     list_push_back(&entry->owners, &thread_current()->frame_elem);
     hash_insert(&ft, &entry->ft_elem);
@@ -59,7 +66,8 @@ get_frame(enum palloc_flags flag, void *user_page)
 struct ft_entry *
 ft_search_entry(void *upage)
 {
-  printf("ft_search: search for %p in frame table\n", upage);
+  
+  lock_acquire(&ft_lock);
   struct ft_entry dummy;
   dummy.user_page = upage;
   struct hash_elem *e = hash_find(&ft, &dummy.ft_elem);
@@ -67,7 +75,7 @@ ft_search_entry(void *upage)
   {
     return NULL;
   }
-  printf("kernel_page = %p\n", hash_entry(e, struct ft_entry, ft_elem)->kernel_page);
+  lock_release(&ft_lock);
   return hash_entry(e, struct ft_entry, ft_elem);
 }
 
@@ -85,7 +93,9 @@ free_frame(void *upage)
 
 void
 ft_add_page_entry(struct ft_entry * entry) {
+    lock_acquire(&ft_lock);
     hash_insert(&ft, &entry->ft_elem);
+    lock_acquire(&ft_lock);
 }
 
 /*entry hashed by the upage address*/

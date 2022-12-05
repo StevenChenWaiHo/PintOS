@@ -76,6 +76,7 @@ spt_destroy () {
 bool
 spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user) {
   void *fault_page = pg_round_down (fault_addr);
+  // printf("fault addr: %p\n", fault_addr); 
 
   //printf("\n\nexception: fault addr: %p\n", fault_addr);
   /*
@@ -95,7 +96,7 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user) {
 
   if (entry == NULL || is_kernel_vaddr (fault_addr) || !not_present
     || (write && !entry->writable)) {
-    /*
+    
     if (entry == NULL) {
       printf("Can't find entry.\n");
     }
@@ -113,11 +114,46 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user) {
     } else {
       printf("Kernel fault!\n");
     }
-    */
+
     return false;
   } else {
-    /*allocate frame if frame not previously allocated.*/
-    void *frame_pt = get_frame (PAL_USER, entry->upage);
+  /**
+   * TODO: if the file to load is in spt, then file do not need to be loaded,
+   * and instead set the thread's pte to that of an installed page
+  */
+  struct ft_entry *frame;
+  struct hash_iterator i;
+  hash_first (&i, get_ft());
+  while (hash_next (&i))
+  {
+    struct ft_entry *e = hash_entry (hash_cur (&i), struct ft_entry, ft_elem);
+    if (e->file == entry->file && e->user_page == fault_addr)
+    {
+      frame = e;
+    }
+  }
+
+  /*find entry with same file name, if entry is not writable*/
+
+  if (frame)
+  {
+    ASSERT(!pagedir_get_page(thread_current()->pagedir, fault_page));
+     
+      /*set pagedir to existing allocated page*/
+      bool success = pagedir_set_page(thread_current()->pagedir, 
+                      fault_page, e->kernel_page, entry->writable);
+      if (!success)
+      {
+        return false;
+      } 
+
+      /*update frame table entry info*/
+      list_push_back(&e->owners, &thread_current()->frame_elem); 
+      return success;     
+  }
+
+  /*allocate frame if frame not previously allocated.*/
+    void *frame_pt = get_frame (PAL_USER, entry->upage, entry->file);
     //printf("frame kpage: %p\n", frame_pt); 
     if (frame_pt == NULL) {
       //printf("Dying due to frame.\n");

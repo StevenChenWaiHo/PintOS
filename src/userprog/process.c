@@ -769,9 +769,10 @@ setup_stack (void **esp)
 {
   uint8_t *kpage;
   uint8_t *upage = ((uint8_t *)PHYS_BASE) - PGSIZE;
+  struct file *file = NULL;
   bool success = false;
 
-  kpage = get_frame (PAL_USER | PAL_ZERO, upage);
+  kpage = get_frame (PAL_USER | PAL_ZERO, upage, file);
   if (kpage != NULL) 
     {
       success = install_page (upage, kpage, true);
