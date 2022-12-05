@@ -114,8 +114,13 @@ valid_pointer (const void *uaddr) {
    Calls valid_pointer at certain (offseted) pointers in every page
    the buffer spans. */
 static void
-valid_buffer (const void *buffer, off_t size) {
+valid_buffer (const void *buffer, off_t size, bool check_writable) {
   for (int i = 0; i < (size + pg_ofs(buffer)) / PGSIZE + 1; i++) {
+    if (check_writable && !pagedir_is_writable
+      (thread_current()->pagedir, buffer + i * PGSIZE)) {
+        printf ("Addr failing: %x\n", buffer + i * PGSIZE);
+        exit_handler (ERROR);
+    }
     valid_pointer (buffer + i * PGSIZE);
   }
 }
@@ -269,7 +274,7 @@ read (uint32_t *args, uint32_t *eax) {
   void *buffer = args[1];
   off_t size = args[2];
 
-  valid_buffer (buffer, size);
+  valid_buffer (buffer, size, true);
 
   if (fd == STDOUT_FILENO) {
     exit_handler (ERROR);
@@ -298,7 +303,7 @@ write (uint32_t *args, uint32_t *eax) {
   const void *buffer = (void *) args[1];
   off_t size = args[2];
   
-  valid_buffer (buffer, size);
+  valid_buffer (buffer, size, false);
 
   if (fd == STDIN_FILENO) {
     exit_handler (ERROR);
