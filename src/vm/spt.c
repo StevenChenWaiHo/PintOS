@@ -74,7 +74,7 @@ spt_destroy () {
 }
 
 bool
-spt_pf_handler (void *fault_addr, struct intr_frame *f) {
+spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user) {
   void *fault_page = pg_round_down (fault_addr);
 
   //printf("\n\nexception: fault addr: %p\n", fault_addr);
@@ -92,10 +92,6 @@ spt_pf_handler (void *fault_addr, struct intr_frame *f) {
   else
     printf("no entry.\n");
   */
-  /* Determine cause. */
-  bool not_present = (f->error_code & PF_P) == 0;
-  bool write = (f->error_code & PF_W) != 0;
-  bool user = (f->error_code & PF_U) != 0;
 
   if (entry == NULL || is_kernel_vaddr (fault_addr) || !not_present
     || (write && !entry->writable)) {
