@@ -15,7 +15,7 @@
 #include "vm/spt.h"
 
 /* Total system calls implemented in Task 2. */
-#define SYS_CALL_NUM 13
+#define SYS_CALL_NUM 15
 
 /* Global file system lock.*/
 struct lock file_l;
@@ -34,21 +34,30 @@ static void write       (uint32_t *, uint32_t *);
 static void seek        (uint32_t *, uint32_t *);
 static void tell        (uint32_t *, uint32_t *);
 static void close       (uint32_t *, uint32_t *);
+static void mmap        (uint32_t *, uint32_t *);
+static void munmap      (uint32_t *, uint32_t *);
 
 void syscall_init (void);
 static struct file *fd_search (int);
-static struct fd_elem_struct *fd_search_struct (int);
+static struct file_record *fd_search_struct (int);
 static void fd_destroy (int);
+static struct file_record *mm_search_struct (int);
+static struct file_record *search_struct (int, struct list *);
 static void syscall_handler (struct intr_frame *);
-
-static bool put_user (uint8_t *, uint8_t);
-static int get_user (const uint8_t *uaddr);
 
 /* Function pointer array for system calls. */
 static void (*sys_call[SYS_CALL_NUM]) (uint32_t *, uint32_t *) = {
-    halt, exit, exec, wait,
-    file_create, file_remove, open, filesize,
-    read, write, seek, tell, close
+  halt, exit, exec, wait,
+  file_create, file_remove, open, filesize,
+  read, write, seek, tell, close,
+  mmap, munmap
+};
+/* Corresponding argument counts of the above functions. */
+static int args_count[SYS_CALL_NUM] = {
+  0, 1, 1, 1,
+  2, 1, 1, 1,
+  3, 3, 2, 1, 1,
+  2, 1
 };
 
 /* Acquire global file system lock. */
@@ -83,30 +92,6 @@ exit_handler (int status) {
   printf ("%s: exit(%d)\n", thread_name (), status);
   thread_exit ();
   NOT_REACHED ();
-}
-
-/* Reads a byte at user virtual address UADDR.
-UADDR must be below PHYS_BASE.
-Returns the byte value if successful, -1 if a segfault
-occurred. */
-static int
-get_user (const uint8_t *uaddr)
-{
-  int result;
-  asm ("movl $1f, %0; movzbl %1, %0; 1:"
-  : "=&a" (result) : "m" (*uaddr));
-  return result;
-}
-/* Writes BYTE to user address UDST.
-UDST must be below PHYS_BASE.
-Returns true if successful, false if a segfault occurred. */
-static bool
-put_user (uint8_t *udst, uint8_t byte)
-{
-  int error_code;
-  asm ("movl $1f, %0; movb %b2, %1; 1:"
-  : "=&a" (error_code), "=m" (*udst) : "q" (byte));
-  return error_code != -1;
 }
 
 /* Function handling checks to user-provided pointers.
@@ -150,15 +135,7 @@ syscall_handler (struct intr_frame *f) {
     exit_handler (-1);
   } 
 
-  if (sys_call_num == SYS_HALT)
-    sys_call[SYS_HALT] (args, return_p);
-
-  if (sys_call_num == SYS_CREATE || sys_call_num == SYS_SEEK)
-    arg_count = 2;
-  else if (sys_call_num == SYS_READ || sys_call_num == SYS_WRITE) 
-    arg_count = 3;
-
-  for (int i = 0; i < arg_count; i++) {
+  for (int i = 0; i < args_count[sys_call_num]; i++) {
     valid_pointer (++p);
     args[i] = *p;
   }
@@ -251,11 +228,11 @@ open (uint32_t *args, uint32_t *eax) {
   if (!fp) {
     *eax = ERROR;
   } else {
-    struct fd_elem_struct *fd_pair = malloc (sizeof (struct fd_elem_struct));
-    fd_pair->fd = thread_current ()->curr_fd++;
+    struct file_record *fd_pair = malloc (sizeof (struct file_record));
+    fd_pair->id = thread_current ()->curr_fd++;
     fd_pair->file_ref = fp;
-    list_push_front (&thread_current ()->fd_ref, &fd_pair->fd_elem);
-    *eax = fd_pair->fd;
+    list_push_front (&thread_current ()->fd_ref, &fd_pair->f_elem);
+    *eax = fd_pair->id;
   }
 
 }
@@ -268,11 +245,12 @@ filesize (uint32_t *args, uint32_t *eax) {
   int fd = args[0];
   if (fd >= 2) {
     struct file *fp = fd_search (fd);
-
-    filesys_lock ();
-    *eax = (uint32_t) file_length (fp);
-    filesys_unlock ();
-    return;
+    if (fp) {
+      filesys_lock ();  
+      *eax = (uint32_t) file_length (fp); 
+      filesys_unlock (); 
+      return;
+    }
   }
   *eax = ERROR;
 }
@@ -365,6 +343,34 @@ close (uint32_t *args, uint32_t *eax UNUSED) {
   fd_destroy (fd);
 }
 
+/* Memory Mapping functions. */
+void
+mmap (uint32_t *args, uint32_t *eax) {
+  int fd = args[0];
+  void *addr = args[1];
+  if (fd >= 2
+    && !pagedir_get_page (thread_current()->pagedir, addr)
+    && pg_ofs (addr) == 0) {
+    struct file *fp = fd_search (fd);
+    if (fp) {
+      int size = file_length (fp);
+      if (size > 0) {
+
+      }
+      
+    }
+  }
+
+  *eax = ERROR;
+}
+
+void
+munmap (uint32_t *args, uint32_t *eax) {
+  mapid_t mapping = args[0];
+
+
+}
+
 /* File descriptor storage list and search functions. */
 
 /* Helper function to directly extract the file pointer in the pair. */
@@ -372,33 +378,49 @@ static struct file *fd_search (int fd) {
   return fd_search_struct (fd)->file_ref;
 }
 
-/* Search function that iterates through the FD_REF list
-   and match their file descriptor ID with the passed argument FD.
-   If not found, a stricter design is implemented here
-   and the process will exit with ERROR code.*/
-static struct fd_elem_struct *fd_search_struct (int fd) {
-  struct list_elem *e;
-  struct list *fd_ref_list = &thread_current ()->fd_ref;
-
-  for (e = list_begin (fd_ref_list); e != list_end (fd_ref_list);
-       e = list_next (e)) {
-    struct fd_elem_struct *curr = 
-      list_entry (e, struct fd_elem_struct, fd_elem);
-    if (curr->fd == fd)
-      return curr;
-  }
-  exit_handler (ERROR);
-  NOT_REACHED ();
+static struct file_record *fd_search_struct (int fd) {
+  return search_struct (fd, &thread_current ()->fd_ref);
 }
 
 /* Helper function to destroy file descriptor pair when closing a file. */
 static void fd_destroy (int fd) {
-  struct fd_elem_struct *e = fd_search_struct (fd);
+  struct file_record *e = fd_search_struct (fd);
 
   filesys_lock ();
   file_close (e->file_ref);
   filesys_unlock ();
 
-  list_remove (&e->fd_elem);
+  list_remove (&e->f_elem);
   free (e);
+}
+
+static struct file_record *mm_search_struct (mapid_t id) {
+  return search_struct (id, &thread_current ()->mm_ref);
+}
+
+/* Helper function to destroy file descriptor pair when closing a file. */
+static void mm_destroy (mapid_t id) {
+  struct file_record *e = mm_search_struct (id);
+  //Some munmap stuff here
+
+  list_remove (&e->f_elem);
+  free (e);
+}
+
+/* Search function that iterates through the FD_REF list
+   and match their file descriptor ID with the passed argument FD.
+   If not found, a stricter design is implemented here
+   and the process will exit with ERROR code.*/
+static struct file_record *search_struct (int id, struct list *lp) {
+  struct list_elem *e;
+
+  for (e = list_begin (lp); e != list_end (lp);
+       e = list_next (e)) {
+    struct file_record *curr = 
+      list_entry (e, struct file_record, f_elem);
+    if (curr->id == id)
+      return curr;
+  }
+  exit_handler (ERROR);
+  NOT_REACHED ();
 }

@@ -74,6 +74,97 @@ spt_destroy () {
 }
 
 bool
+lazy_load (struct file *file, off_t ofs, uint8_t *upage,
+          uint32_t read_bytes, uint32_t zero_bytes, bool writable) {
+  /*
+  printf("loading ");
+  printf(writable? "w " : "n/w ");
+  printf("segment at ofs %d to upage %p,\n", ofs, upage);
+  printf("reading in %d and zeroing %d bytes...\n\n", read_bytes, zero_bytes);
+  */
+  while (read_bytes > 0 || zero_bytes > 0) 
+  {
+    /* Calculate how to fill this page.
+       We will read PAGE_READ_BYTES bytes from FILE
+       and zero the final PAGE_ZERO_BYTES bytes. */
+    size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+    size_t page_zero_bytes = PGSIZE - page_read_bytes;
+    
+//    /* Check if virtual page already allocated */
+//    struct thread *t = thread_current ();
+//    uint8_t *kpage = pagedir_get_page (t->pagedir, upage);
+//    
+//    if (kpage == NULL){
+//      
+//      /* Get a new page of memory. */
+//      kpage = get_frame (PAL_USER, upage);
+//      if (kpage == NULL){
+//        return false;
+//      }
+//      
+//      /* Add the page to the process's address space. */
+//      if (!install_page (upage, kpage, writable)) 
+//      {
+//        free_frame (kpage);
+//        return false; 
+//      }     
+//      
+//    } else {
+//      
+//      /* Check if writable flag for the page should be updated */
+//      if (writable && !pagedir_is_writable (t->pagedir, upage)){
+//        pagedir_set_writable (t->pagedir, upage, writable); 
+//      }
+//      
+//    }
+//
+//    /* Load data into the page. */
+//    if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes){
+//      return false; 
+//    }
+//    memset (kpage + page_read_bytes, 0, page_zero_bytes);
+
+    /* New load_segment with lazy loading. */
+    struct spt_entry *entry = spt_lookup (upage);
+    if (!entry) {
+      //printf("load seg: creating entry for %p\n", upage);
+      // No previous entries in SPT, creates one and insert after assign args
+      entry = (struct spt_entry *) malloc (sizeof (struct spt_entry));
+      if (entry == NULL) {
+        return false;
+      }
+      entry->location = FILE_SYS;
+      entry->file = file;
+      entry->ofs = ofs;
+      entry->rbytes = page_read_bytes;
+      entry->zbytes = page_zero_bytes;
+      entry->upage = upage;
+      entry->writable = writable;
+      spt_insert (entry);
+    } else {
+      // Previous entry present, update SPT meta-data.
+      //printf("Previous entry present, update SPT meta-data.\n");
+      if (page_read_bytes != entry->rbytes) {
+        uint32_t old_rb = entry->rbytes;
+        uint32_t old_zb = entry->zbytes;
+        entry->rbytes = page_read_bytes;
+        entry->zbytes = page_zero_bytes;
+        //printf("rb old vs new: %u: %u\n", old_rb, entry->rbytes);
+        //printf("zb old vs new: %u: %u\n", old_zb, entry->zbytes);
+      }
+      if (writable)
+        entry->writable = writable;
+    }
+    /* Advance. */
+    read_bytes -= page_read_bytes;
+    zero_bytes -= page_zero_bytes;
+    upage += PGSIZE;
+    ofs += PGSIZE;
+  }
+  return true;
+}
+
+bool
 spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user) {
   void *fault_page = pg_round_down (fault_addr);
 
@@ -134,11 +225,6 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user) {
           //printf("Dying due to read to file.\n");
           return false;
         }
-        /**
-         * only when upage is not mapped
-         * (ie. NOT loading into prev page) do we call pagedir_set_page()
-         * otherwise (ie. loading into prev page) 
-         **/
         if (!pagedir_set_page (
             thread_current()->pagedir, fault_page, frame_pt, entry->writable)) {
           //printf("Dying due to setpage.\n");
