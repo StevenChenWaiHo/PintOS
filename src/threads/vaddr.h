@@ -20,6 +20,8 @@
 #define PGSIZE  (1 << PGBITS)              /* Bytes in a page. */
 #define PGMASK  BITMASK(PGSHIFT, PGBITS)   /* Page offset bits (0:12). */
 
+#define STACK_B (void *) 0x08048000       /* Bottom of the user stack. */
+
 /* Offset within a page. */
 static inline unsigned pg_ofs (const void *va) {
   return (uintptr_t) va & PGMASK;
@@ -84,6 +86,13 @@ vtop (const void *vaddr)
   ASSERT (is_kernel_vaddr (vaddr));
 
   return (uintptr_t) vaddr - (uintptr_t) PHYS_BASE;
+}
+
+/* Returns true if VADDR is below the user stack. */
+static inline bool
+is_below_ustack (const void *vaddr) 
+{
+  return vaddr < STACK_B;
 }
 
 #endif /* threads/vaddr.h */
