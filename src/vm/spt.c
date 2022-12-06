@@ -80,23 +80,23 @@ spt_destroy () {
 
 /* Assume page present. */
 bool
-spt_pf_handler (void *fault_addr, struct intr_frame *f) {
-  bool write;        /* True: access was write, false: access was read. */
-  bool user;         /* True: access by user, false: access by kernel. */
+spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void *esp) {
   void *fault_page = pg_round_down (fault_addr);
-
-  /* Determine cause. */
-  write = (f->error_code & PF_W) != 0;
-  user = (f->error_code & PF_U) != 0;
 
   struct spt_entry *entry = spt_lookup (fault_page);
 
+  if (esp == NULL)
+  {
+    return false;
+  }
+  
+  /* Write to read-only page. */
   if ((write && !entry->writable)) {
     return false;
   } else if (entry == NULL) {
     /* Check if needs stack growth. */ 
     if (fault_addr == NULL || is_kernel_vaddr (fault_addr)
-      || is_below_ustack (fault_addr) || f->esp - fault_addr > STACK_OFS
+      || is_below_ustack (fault_addr) || esp - fault_addr > STACK_OFS
       || PHYS_BASE - fault_page > STACK_MAX) {
       return false;
     }
@@ -143,19 +143,10 @@ grow_stack(void *upage) {
   entry->location = STACK;
   entry->writable = true;
   spt_insert(entry);
-  void* kpage = (void *) palloc_get_page (PAL_USER | PAL_ZERO);
-  if (kpage != NULL)
+  void* kpage = get_frame (PAL_USER | PAL_ZERO, upage);
+  if (kpage != NULL && !install_page(upage, kpage, true))
   {
-    struct ft_entry *f_entry = (struct ft_entry *) malloc (sizeof (struct ft_entry));
-    f_entry->kernel_page = kpage;
-    f_entry->user_page = upage;
-    //owners?
-    //eviction later?
-    ft_add_page_entry(f_entry);
-    if (!install_page(upage, kpage, true))
-    {
-      return false;
-    }
+    return false;
   }
   return true;
 }
