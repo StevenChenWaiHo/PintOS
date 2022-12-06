@@ -22,6 +22,7 @@
 #include "threads/vaddr.h"
 
 #include "vm/frame.h"
+#include "vm/share.h"
 #include "vm/spt.h"
 
 /* Extra argument counts used in argument passing, containing null pointer,
@@ -541,7 +542,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
       goto done; 
     }
 
-  //printf("(load) pages to load: %d\n", ehdr.e_phnum);
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++) 
@@ -696,9 +696,10 @@ setup_stack (void **esp)
 {
   uint8_t *kpage;
   uint8_t *upage = ((uint8_t *)PHYS_BASE) - PGSIZE;
+  struct file *file = NULL;
   bool success = false;
 
-  kpage = get_frame (PAL_USER | PAL_ZERO, upage);
+  kpage = get_frame (PAL_USER | PAL_ZERO, upage, file);
   if (kpage != NULL) 
     {
       success = install_page (upage, kpage, true);

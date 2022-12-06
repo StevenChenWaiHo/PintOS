@@ -15,6 +15,7 @@
 #include "threads/malloc.h"
 #include "threads/vaddr.h"
 #include "vm/frame.h"
+#include "vm/share.h"
 
 unsigned spt_hash (const struct hash_elem *, void *);
 bool spt_less (const struct hash_elem *, 
@@ -94,6 +95,31 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
   */
   while (read_bytes > 0 || zero_bytes > 0) 
   {
+    /**
+      * SHARING:
+      * if page is read only:
+      * look up share table to find FRAME with same FILE and PAGE NO
+      * if frame exists:
+      *   i. insert into share table the PAGE of FILE
+      *   ii. copy KPAGE of the shared frame to KPAGE of PAGEDIR of thread_current()
+      */
+
+      if (!writable)
+      {
+        printf(writable? "w\n" : "n/w\n");
+        struct ft_entry *fte = st_find_frame_for_upage(upage, file);
+        if (fte)
+        {
+          bool inserted = st_insert_share_entry(file, upage, fte);
+          bool success = install_page(upage, fte->kernel_page, writable);
+          printf((inserted && success)? "sharing successful\n" : "sharing unsuccessful\n");
+        } else
+        {
+          printf("share table no such frame\n");
+        }
+      }
+      /* *********** SHARING DONE *********** */
+
     /* Calculate how to fill this page.
        We will read PAGE_READ_BYTES bytes from FILE
        and zero the final PAGE_ZERO_BYTES bytes. */
@@ -162,7 +188,7 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
       return false;
     } 
     /* Allocate frame if frame not previously allocated. */
-    void *frame_pt = get_frame (PAL_USER, entry->upage);
+    void *frame_pt = get_frame (PAL_USER, entry->upage, entry->file);
     if (frame_pt == NULL) {
       return false;
     } else {
@@ -185,6 +211,20 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
         if (!install_page (fault_page, frame_pt, entry->writable)) {
           return false;
         }
+        
+        /** SHARING: 
+         * If new frame is read-only, add entry to share table
+        */
+        if (!entry->writable)
+        {
+          // printf("spt_pf_handler:: ofs: %d, file: %p, upage %p\n", entry->ofs, entry->file, entry->upage);
+          struct ft_entry *ft_entry = ft_search_entry(frame_pt);
+          // printf((ft_entry != NULL)? "frame successfully fetched\n" : "frame unsuccessfully fetched\n");
+          bool inserted = st_insert_share_entry(entry->file, entry->upage, ft_entry);
+          // printf(inserted? "new sharing entry inserted successfully\n" : "new sharing entry inserted UNsuccessfully\n");
+          ASSERT(inserted);
+        }
+        /* *********** SHARING DONE *********** */
       }
       if (entry->location == SWAP) {
         //Takes information in swap disk thru swap_in

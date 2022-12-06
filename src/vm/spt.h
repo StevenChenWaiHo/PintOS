@@ -27,7 +27,7 @@ struct spt_entry
   struct file *file;
   off_t ofs;
   uint32_t rbytes, zbytes;
-  //int swap_id;
+  uint32_t *pd;
 };
 
 bool spt_init (struct thread *);
