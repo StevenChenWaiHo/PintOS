@@ -61,7 +61,7 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
         return NULL; 
     }
     owner->process = thread_current();
-    owner->process = user_page;
+    owner->upage = user_page;
     list_push_back(&entry->owners, &owner->owner_elem);
     hash_insert(&ft, &entry->ft_elem);
     lock_release(&ft_lock);
