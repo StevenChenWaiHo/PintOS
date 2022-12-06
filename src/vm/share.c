@@ -43,7 +43,7 @@ st_find_share_entry(struct file *file)
     {
         return NULL;
     }
-    return hash_entry(e, struct st_entry, st_elem);;  
+    return hash_entry(e, struct st_entry, st_elem);
 }
 
 
@@ -80,14 +80,14 @@ st_insert_share_entry(struct file *file, void *upage, struct ft_entry *fte)
         printf("Cannot alloc share_frame_info for st_entry!\n");
         return false; 
     }
-    printf("st_insert_share_entry:: can malloc share_frame_info for st_entry!\n");
+    // printf("st_insert_share_entry:: can malloc share_frame_info for st_entry!\n");
     info->frame = fte;
     info->upage = upage;
 
     struct st_entry *e = st_find_share_entry (file);
     if (!e)
     {
-        e = (struct st_entry *)malloc(sizeof(struct st_entry *));
+        e = (struct st_entry *)malloc(sizeof(struct st_entry));
         if (!e)
         {
             printf("Cannot alloc share_frame_info for st_entry!\n");
@@ -97,7 +97,7 @@ st_insert_share_entry(struct file *file, void *upage, struct ft_entry *fte)
         list_init(&e->upages);
         
         hash_insert(&st, &e->st_elem);
-        printf("new share table entry created succesfully\n");
+        // printf("new share table entry created succesfully\n");
     }
     
     list_push_back(&e->upages, &info->page_elem);
@@ -117,7 +117,7 @@ st_free_entry (struct file *file)
             struct share_frame_info *info = list_entry(e, struct share_frame_info, page_elem);
             free(info);
         }
-        hash_delete(&st, entry);
+        hash_delete(&st, &entry->st_elem);
         free(entry);
         return true;
     }

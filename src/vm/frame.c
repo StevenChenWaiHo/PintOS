@@ -79,6 +79,7 @@ ft_search_entry(void *kpage)
   struct hash_elem *e = hash_find(&ft, &dummy.ft_elem);
   if (!e)
   {
+    lock_release(&ft_lock);
     return NULL;
   }
   lock_release(&ft_lock);

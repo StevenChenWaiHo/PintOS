@@ -137,11 +137,11 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user) {
         */
         if (!entry->writable)
         {
-          printf("spt_pf_handler:: ofs: %d, file: %p, upage %p\n", entry->ofs, entry->file, entry->upage);
+          // printf("spt_pf_handler:: ofs: %d, file: %p, upage %p\n", entry->ofs, entry->file, entry->upage);
           struct ft_entry *ft_entry = ft_search_entry(frame_pt);
-          printf((ft_entry != NULL)? "frame successfully fetched\n" : "frame unsuccessfully fetched\n");
+          // printf((ft_entry != NULL)? "frame successfully fetched\n" : "frame unsuccessfully fetched\n");
           bool inserted = st_insert_share_entry(entry->file, entry->upage, ft_entry);
-          printf(inserted? "new sharing entry inserted successfully\n" : "new sharing entry inserted UNsuccessfully\n");
+          // printf(inserted? "new sharing entry inserted successfully\n" : "new sharing entry inserted UNsuccessfully\n");
           ASSERT(inserted);
         }
         /* *********** SHARING DONE *********** */
