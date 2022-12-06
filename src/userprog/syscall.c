@@ -15,7 +15,7 @@
 #include "vm/spt.h"
 
 /* Total system calls implemented in Task 2. */
-#define SYS_CALL_NUM 13
+#define SYS_CALL_NUM 15
 
 /* Global file system lock.*/
 struct lock file_l;
@@ -34,21 +34,33 @@ static void write       (uint32_t *, uint32_t *);
 static void seek        (uint32_t *, uint32_t *);
 static void tell        (uint32_t *, uint32_t *);
 static void close       (uint32_t *, uint32_t *);
+static void mmap        (uint32_t *, uint32_t *);
+static void munmap      (uint32_t *, uint32_t *);
 
 void syscall_init (void);
-static struct file *fd_search (int);
-static struct fd_elem_struct *fd_search_struct (int);
-static void fd_destroy (int);
 static void syscall_handler (struct intr_frame *);
 
-static bool put_user (uint8_t *, uint8_t);
-static int get_user (const uint8_t *uaddr);
+static struct file *fd_search (int);
+static struct file_record *fd_search_struct (int);
+static void fd_destroy (int);
+static struct file_record *mm_search_struct (int);
+static struct file_record *search_struct (int, struct list *);
+
+static bool mmap_available (void *, int);
 
 /* Function pointer array for system calls. */
 static void (*sys_call[SYS_CALL_NUM]) (uint32_t *, uint32_t *) = {
-    halt, exit, exec, wait,
-    file_create, file_remove, open, filesize,
-    read, write, seek, tell, close
+  halt, exit, exec, wait,
+  file_create, file_remove, open, filesize,
+  read, write, seek, tell, close,
+  mmap, munmap
+};
+/* Corresponding argument counts of the above functions. */
+static int args_count[SYS_CALL_NUM] = {
+  0, 1, 1, 1,
+  2, 1, 1, 1,
+  3, 3, 2, 1, 1,
+  2, 1
 };
 
 /* Acquire global file system lock. */
@@ -85,30 +97,6 @@ exit_handler (int status) {
   NOT_REACHED ();
 }
 
-/* Reads a byte at user virtual address UADDR.
-UADDR must be below PHYS_BASE.
-Returns the byte value if successful, -1 if a segfault
-occurred. */
-static int
-get_user (const uint8_t *uaddr)
-{
-  int result;
-  asm ("movl $1f, %0; movzbl %1, %0; 1:"
-  : "=&a" (result) : "m" (*uaddr));
-  return result;
-}
-/* Writes BYTE to user address UDST.
-UDST must be below PHYS_BASE.
-Returns true if successful, false if a segfault occurred. */
-static bool
-put_user (uint8_t *udst, uint8_t byte)
-{
-  int error_code;
-  asm ("movl $1f, %0; movb %b2, %1; 1:"
-  : "=&a" (error_code), "=m" (*udst) : "q" (byte));
-  return error_code != -1;
-}
-
 /* Function handling checks to user-provided pointers.
    Calls functions to clear allocated memory to the current process
    and kills the current thread. */
@@ -116,7 +104,7 @@ static void
 valid_pointer (const void *uaddr) {
   if (!is_user_vaddr (uaddr)
     || !pagedir_get_page (thread_current ()->pagedir, uaddr)) {
-    if (!spt_pf_handler (uaddr, true, false, true)){
+    if (!spt_pf_handler (uaddr, true, false, true, NULL)){
       exit_handler (ERROR);
     }
   }
@@ -126,9 +114,15 @@ valid_pointer (const void *uaddr) {
    Calls valid_pointer at certain (offseted) pointers in every page
    the buffer spans. */
 static void
-valid_buffer (const void *buffer, off_t size) {
+valid_buffer (const void *buffer, off_t size, bool check_writable) {
   for (int i = 0; i < (size + pg_ofs(buffer)) / PGSIZE + 1; i++) {
-    valid_pointer (buffer + i * PGSIZE);
+    valid_pointer (buffer);
+    if (check_writable && !pagedir_is_writable
+      (thread_current()->pagedir, buffer)) {
+        //printf ("Addr failing: %x\n", buffer);
+        exit_handler (ERROR);
+    }
+    buffer += PGSIZE;
   }
 }
 
@@ -138,6 +132,7 @@ valid_buffer (const void *buffer, off_t size) {
    before calling the corresponding system calls. */
 static void
 syscall_handler (struct intr_frame *f) {
+  //printf("Current esp= %p", f->esp);
   valid_pointer (f->esp);
   uint32_t args[3] = {0};
   uint32_t *p = f->esp;
@@ -150,15 +145,7 @@ syscall_handler (struct intr_frame *f) {
     exit_handler (-1);
   } 
 
-  if (sys_call_num == SYS_HALT)
-    sys_call[SYS_HALT] (args, return_p);
-
-  if (sys_call_num == SYS_CREATE || sys_call_num == SYS_SEEK)
-    arg_count = 2;
-  else if (sys_call_num == SYS_READ || sys_call_num == SYS_WRITE) 
-    arg_count = 3;
-
-  for (int i = 0; i < arg_count; i++) {
+  for (int i = 0; i < args_count[sys_call_num]; i++) {
     valid_pointer (++p);
     args[i] = *p;
   }
@@ -251,11 +238,11 @@ open (uint32_t *args, uint32_t *eax) {
   if (!fp) {
     *eax = ERROR;
   } else {
-    struct fd_elem_struct *fd_pair = malloc (sizeof (struct fd_elem_struct));
-    fd_pair->fd = thread_current ()->curr_fd++;
+    struct file_record *fd_pair = malloc (sizeof (struct file_record));
+    fd_pair->id = thread_current ()->curr_fd++;
     fd_pair->file_ref = fp;
-    list_push_front (&thread_current ()->fd_ref, &fd_pair->fd_elem);
-    *eax = fd_pair->fd;
+    list_push_front (&thread_current ()->fd_ref, &fd_pair->f_elem);
+    *eax = fd_pair->id;
   }
 
 }
@@ -268,11 +255,12 @@ filesize (uint32_t *args, uint32_t *eax) {
   int fd = args[0];
   if (fd >= 2) {
     struct file *fp = fd_search (fd);
-
-    filesys_lock ();
-    *eax = (uint32_t) file_length (fp);
-    filesys_unlock ();
-    return;
+    if (fp) {
+      filesys_lock ();  
+      *eax = (uint32_t) file_length (fp); 
+      filesys_unlock (); 
+      return;
+    }
   }
   *eax = ERROR;
 }
@@ -287,8 +275,17 @@ read (uint32_t *args, uint32_t *eax) {
   int fd = args[0];
   void *buffer = args[1];
   off_t size = args[2];
+  /*
+  printf("%x", buffer);
+  struct spt_entry *entry = spt_lookup (buffer);
+  
+  if (!entry) 
+    printf("a\n\n\n\n\n\n");
+  else
+    printf("location: %d, writable: %d\n", entry->location, entry->writable);
+  */
 
-  valid_buffer (buffer, size);
+  valid_buffer (buffer, size, true);
 
   if (fd == STDOUT_FILENO) {
     exit_handler (ERROR);
@@ -317,7 +314,7 @@ write (uint32_t *args, uint32_t *eax) {
   const void *buffer = (void *) args[1];
   off_t size = args[2];
   
-  valid_buffer (buffer, size);
+  valid_buffer (buffer, size, false);
 
   if (fd == STDIN_FILENO) {
     exit_handler (ERROR);
@@ -365,6 +362,97 @@ close (uint32_t *args, uint32_t *eax UNUSED) {
   fd_destroy (fd);
 }
 
+/* Memory Mapping functions. */
+
+/* Helper function that iterate through every consecutive page of ADDR
+  to check for availability for mapping into memory.*/
+static bool mmap_available (void *addr, int read_bytes) {
+  while (read_bytes > 0) {
+    if (spt_lookup (addr)) {
+      return false;
+    }
+    addr += PGSIZE;
+    read_bytes -= PGSIZE;
+  }
+  return true;
+}
+
+/* Maps a file of descriptor FD to virtual address ADDR. */
+void
+mmap (uint32_t *args, uint32_t *eax) {
+  int fd = args[0];
+  void *addr = (void *) args[1];
+  //printf("mmaping at %p\n", addr);
+  /* Checking for fd, addr fails. */
+  if (fd >= 2 && addr != 0 && pg_ofs (addr) == 0
+    && (PHYS_BASE - (int) addr) > STACK_MAX) {
+    struct file *fp = fd_search (fd);
+    if (fp) {
+      //Needs to renew thru reopen for unix convention of closing files
+      filesys_lock ();
+      fp = file_reopen (fp);
+      int read_bytes = file_length (fp);
+      filesys_unlock ();
+      /* Checking for file size, overlapping pages fails.*/
+      if (read_bytes > 0 && mmap_available (addr, read_bytes)) {
+        int zero_bytes = (read_bytes % PGSIZE == 0) ? 
+          0 : PGSIZE - (read_bytes % PGSIZE);
+
+        //Do we assume writable is true here and leave blocking writes to
+        //executable file for deny-writed calls to file_write?
+        lazy_load (fp, 0, addr, read_bytes, zero_bytes, true, MMAP);
+
+        /* Insert MMAP pair into MM_REF,
+          allocating a new MAPID to the mapping. */
+        struct file_record *mm_pair = malloc (sizeof (struct file_record));
+        mm_pair->id = thread_current ()->curr_mapid++;
+        mm_pair->file_ref = fp;
+        mm_pair->mapping_addr = addr;
+        list_push_front (&thread_current ()->mm_ref, &mm_pair->f_elem);
+        *eax = mm_pair->id;
+        return;
+      }
+    }
+  }
+  *eax = ERROR;
+}
+
+/* Helper function to destroy MMAP pair when closing a file. */
+void
+mm_destroy (struct file_record *e) {
+  //Some munmap stuff here
+  filesys_lock ();
+  int size = file_length (e->file_ref);
+  void *upage = e->mapping_addr;
+  /* Iterating through all pages, checking dirty state and writing any dirty ones
+    if this is the last page and is not full, trims the current upage content.*/
+  while (size > 0) {
+    if (pagedir_is_dirty (thread_current ()->pagedir, upage)) {
+      if (size < PGSIZE) {
+        file_write_at (e->file_ref, upage, size, upage - e->mapping_addr);
+      } else {
+        file_write_at (e->file_ref, upage, PGSIZE, upage - e->mapping_addr);        
+      }
+    }
+    pagedir_clear_page (thread_current ()->pagedir, upage);
+    spt_remove (upage);
+    upage += PGSIZE;
+    size -= PGSIZE;
+  }
+  filesys_unlock ();
+  list_remove (&e->f_elem);
+  free (e);
+}
+
+/* Unmaps the mapping of id MAPPING by calling helper function
+  on the search result. */
+void
+munmap (uint32_t *args, uint32_t *eax) {
+  mapid_t mapping = args[0];
+  struct file_record *e = mm_search_struct (mapping);
+  mm_destroy (e);
+}
+
 /* File descriptor storage list and search functions. */
 
 /* Helper function to directly extract the file pointer in the pair. */
@@ -372,33 +460,40 @@ static struct file *fd_search (int fd) {
   return fd_search_struct (fd)->file_ref;
 }
 
-/* Search function that iterates through the FD_REF list
-   and match their file descriptor ID with the passed argument FD.
-   If not found, a stricter design is implemented here
-   and the process will exit with ERROR code.*/
-static struct fd_elem_struct *fd_search_struct (int fd) {
-  struct list_elem *e;
-  struct list *fd_ref_list = &thread_current ()->fd_ref;
-
-  for (e = list_begin (fd_ref_list); e != list_end (fd_ref_list);
-       e = list_next (e)) {
-    struct fd_elem_struct *curr = 
-      list_entry (e, struct fd_elem_struct, fd_elem);
-    if (curr->fd == fd)
-      return curr;
-  }
-  exit_handler (ERROR);
-  NOT_REACHED ();
+static struct file_record *fd_search_struct (int fd) {
+  return search_struct (fd, &thread_current ()->fd_ref);
 }
 
 /* Helper function to destroy file descriptor pair when closing a file. */
 static void fd_destroy (int fd) {
-  struct fd_elem_struct *e = fd_search_struct (fd);
+  struct file_record *e = fd_search_struct (fd);
 
   filesys_lock ();
   file_close (e->file_ref);
   filesys_unlock ();
 
-  list_remove (&e->fd_elem);
+  list_remove (&e->f_elem);
   free (e);
+}
+
+static struct file_record *mm_search_struct (mapid_t id) {
+  return search_struct (id, &thread_current ()->mm_ref);
+}
+
+/* Search function that iterates through the FD_REF list
+   and match their file descriptor ID with the passed argument FD.
+   If not found, a stricter design is implemented here
+   and the process will exit with ERROR code. */
+static struct file_record *search_struct (int id, struct list *lp) {
+  struct list_elem *e;
+
+  for (e = list_begin (lp); e != list_end (lp);
+       e = list_next (e)) {
+    struct file_record *curr = 
+      list_entry (e, struct file_record, f_elem);
+    if (curr->id == id)
+      return curr;
+  }
+  exit_handler (ERROR);
+  NOT_REACHED ();
 }

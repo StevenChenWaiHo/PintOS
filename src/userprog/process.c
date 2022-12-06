@@ -346,7 +346,7 @@ process_exit (void)
       e = e_next;
     }
   }
-
+  intr_set_level (old_level);
   /* Closing all files that are still open in this process. 
      Corresponding file descriptor pairs are also freed here. */
   filesys_lock ();
@@ -354,7 +354,7 @@ process_exit (void)
   if (!list_empty (fd_ref_list)) {
     struct list_elem *e = list_front (fd_ref_list);
     while (e != list_end (fd_ref_list)) {
-      struct fd_elem_struct *open_file = list_entry (e, struct fd_elem_struct, fd_elem);
+      struct file_record *open_file = list_entry (e, struct file_record, f_elem);
       file_close (open_file->file_ref);
       e = list_next (e);
       free (open_file);
@@ -365,6 +365,19 @@ process_exit (void)
      raising the deny_write limit on the file system.*/
   file_close (cur->process_file);
   filesys_unlock ();
+  /* Freeing MMAP elements by calling helper function for munmap. */
+  struct list *mm_ref_list = &thread_current ()->mm_ref;
+  if (!list_empty (mm_ref_list)) {
+    struct list_elem *e = list_front (mm_ref_list);
+    while (e != list_end (mm_ref_list)) {
+      struct file_record *mm_pair = list_entry (e, struct file_record, f_elem);
+      e = list_next (e);
+      mm_destroy (mm_pair);
+    }
+  }
+  
+  /* Freeing SPT elements, removing entries in the swap disk. */
+  spt_destroy ();
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -394,7 +407,7 @@ process_exit (void)
 
   /* Should consult supplemental page table for any extra stuff to free here.*/
 
-  intr_set_level (old_level);
+
   sema_up (&cur->child_thread_coord->sema);
 }
 
@@ -606,8 +619,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
 /* load () helpers. */
 
-static bool install_page (void *upage, void *kpage, bool writable);
-
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
 static bool
@@ -674,118 +685,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT ( (read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
-  /*
-  printf("loading ");
-  printf(writable? "w " : "n/w ");
-  printf("segment at ofs %d to upage %p,\n", ofs, upage);
-  printf("reading in %d and zeroing %d bytes...\n\n", read_bytes, zero_bytes);
-  */
-  while (read_bytes > 0 || zero_bytes > 0) 
-    {
-      printf("ofs: %d, file: %p, upage %p\n", ofs, file, upage);
-      /**
-      * SHARING:
-      * if page is read only:
-      * look up share table to find FRAME with same FILE and PAGE NO
-      * if frame exists:
-      *   i. insert into share table the PAGE of FILE
-      *   ii. copy KPAGE of the shared frame to KPAGE of PAGEDIR of thread_current()
-      */
-
-      if (!writable)
-      {
-        printf(writable? "w\n" : "n/w\n");
-        struct ft_entry *fte = st_find_frame_for_upage(upage, file);
-        if (fte)
-        {
-          bool inserted = st_insert_share_entry(file, upage, fte);
-          bool success = install_page(upage, fte->kernel_page, writable);
-          printf((inserted && success)? "sharing successful\n" : "sharing unsuccessful\n");
-        } else
-        {
-          printf("share table no such frame\n");
-        }
-      }
-      /* *********** SHARING DONE *********** */
-
-      /* Calculate how to fill this page.
-         We will read PAGE_READ_BYTES bytes from FILE
-         and zero the final PAGE_ZERO_BYTES bytes. */
-      size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
-      size_t page_zero_bytes = PGSIZE - page_read_bytes;
-      
-//      /* Check if virtual page already allocated */
-//      struct thread *t = thread_current ();
-//      uint8_t *kpage = pagedir_get_page (t->pagedir, upage);
-//      
-//      if (kpage == NULL){
-//        
-//        /* Get a new page of memory. */
-//        kpage = get_frame (PAL_USER, upage);
-//        if (kpage == NULL){
-//          return false;
-//        }
-//        
-//        /* Add the page to the process's address space. */
-//        if (!install_page (upage, kpage, writable)) 
-//        {
-//          free_frame (kpage);
-//          return false; 
-//        }     
-//        
-//      } else {
-//        
-//        /* Check if writable flag for the page should be updated */
-//        if (writable && !pagedir_is_writable (t->pagedir, upage)){
-//          pagedir_set_writable (t->pagedir, upage, writable); 
-//        }
-//        
-//      }
-//
-//      /* Load data into the page. */
-//      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes){
-//        return false; 
-//      }
-//      memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
-      /* New load_segment with lazy loading. */
-      struct spt_entry *entry = spt_lookup (upage);
-      if (!entry) {
-        //printf("load seg: creating entry for %p\n", upage);
-        // No previous entries in SPT, creates one and insert after assign args
-        entry = (struct spt_entry *) malloc (sizeof (struct spt_entry));
-        if (entry == NULL) {
-          return false;
-        }
-        entry->location = FILE_SYS;
-        entry->file = file;
-        entry->ofs = ofs;
-        entry->rbytes = page_read_bytes;
-        entry->zbytes = page_zero_bytes;
-        entry->upage = upage;
-        entry->writable = writable;
-        spt_insert (entry);
-      } else {
-        // Previous entry present, update SPT meta-data.
-        //printf("Previous entry present, update SPT meta-data.\n");
-        if (page_read_bytes != entry->rbytes) {
-          uint32_t old_rb = entry->rbytes;
-          uint32_t old_zb = entry->zbytes;
-          entry->rbytes = page_read_bytes;
-          entry->zbytes = page_zero_bytes;
-          //printf("rb old vs new: %u: %u\n", old_rb, entry->rbytes);
-          //printf("zb old vs new: %u: %u\n", old_zb, entry->zbytes);
-        }
-        if (writable)
-          entry->writable = writable;
-      }
-      /* Advance. */
-      read_bytes -= page_read_bytes;
-      zero_bytes -= page_zero_bytes;
-      upage += PGSIZE;
-      ofs += PGSIZE;
-    }
-  return true;
+  return
+    lazy_load (file, ofs, upage, read_bytes, zero_bytes, writable, FILE_SYS);
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of
@@ -819,7 +720,7 @@ setup_stack (void **esp)
    with palloc_get_page ().
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
-static bool
+bool
 install_page (void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current ();
