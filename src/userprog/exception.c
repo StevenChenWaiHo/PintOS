@@ -5,6 +5,7 @@
 #include "userprog/syscall.h"
 #include "threads/interrupt.h"
 #include "threads/thread.h"
+#include "threads/vaddr.h"
 #include "vm/spt.h"
 
 /* Number of page faults processed. */
@@ -146,11 +147,12 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
-  
-  if (!spt_pf_handler (fault_addr, not_present, write, user)) {
-    if (user) {
-      exit_handler (ERROR);
-    }
+
+  //kill if page fault by kernel?
+
+  if (!not_present || !f->esp
+    || !spt_pf_handler (fault_addr, not_present, write, user, f->esp)) {
+    exit_handler(ERROR);
   }
 
   /* To implement virtual memory, delete the contents here,

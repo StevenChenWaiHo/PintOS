@@ -104,7 +104,7 @@ static void
 valid_pointer (const void *uaddr) {
   if (!is_user_vaddr (uaddr)
     || !pagedir_get_page (thread_current ()->pagedir, uaddr)) {
-    if (!spt_pf_handler (uaddr, true, false, true)){
+    if (!spt_pf_handler (uaddr, true, false, true, NULL)){
       exit_handler (ERROR);
     }
   }
