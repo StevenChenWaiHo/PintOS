@@ -39,6 +39,7 @@
 #endif
 
 #include "vm/frame.h"
+#include "vm/share.h"
 
 
 /* Page directory with kernel mappings only. */

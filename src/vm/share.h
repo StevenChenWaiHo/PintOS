@@ -20,8 +20,10 @@ struct share_frame_info
 
 void st_init(void);
 struct hash *get_st(void);
-void free_share_entry(struct st_entry*);
-struct st_entry *find_share_entry(struct file *file);
-struct ft_entry *find_frame_for_upage (void *, struct file *);
+void st_free_share_entry(struct st_entry*);
+struct st_entry *st_find_share_entry(struct file *file);
+struct ft_entry *st_find_frame_for_upage (void *, struct file *);
+bool st_insert_share_entry(struct file *, void *, struct ft_entry *);
+bool st_free_entry (struct file *);
 
 #endif /* vm/share.h */

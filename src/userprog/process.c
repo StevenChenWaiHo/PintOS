@@ -22,6 +22,7 @@
 #include "threads/vaddr.h"
 
 #include "vm/frame.h"
+#include "vm/share.h"
 #include "vm/spt.h"
 
 /* Extra argument counts used in argument passing, containing null pointer,
@@ -681,6 +682,32 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   */
   while (read_bytes > 0 || zero_bytes > 0) 
     {
+      printf("ofs: %d, file: %p, upage %p\n", ofs, file, upage);
+      /**
+      * SHARING:
+      * if page is read only:
+      * look up share table to find FRAME with same FILE and PAGE NO
+      * if frame exists:
+      *   i. insert into share table the PAGE of FILE
+      *   ii. copy KPAGE of the shared frame to KPAGE of PAGEDIR of thread_current()
+      */
+
+      if (!writable)
+      {
+        printf(writable? "w\n" : "n/w\n");
+        struct ft_entry *fte = st_find_frame_for_upage(upage, file);
+        if (fte)
+        {
+          bool inserted = st_insert_share_entry(file, upage, fte);
+          bool success = install_page(upage, fte->kernel_page, writable);
+          printf((inserted && success)? "sharing successful\n" : "sharing unsuccessful\n");
+        } else
+        {
+          printf("share table no such frame\n");
+        }
+      }
+      /* *********** SHARING DONE *********** */
+
       /* Calculate how to fill this page.
          We will read PAGE_READ_BYTES bytes from FILE
          and zero the final PAGE_ZERO_BYTES bytes. */

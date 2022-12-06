@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include "vm/share.h"
+#include "vm/frame.h"
 #include "threads/thread.h"
 #include "threads/synch.h"
 
@@ -27,13 +28,13 @@ get_st(void)
 }
 
 void
-free_share_entry(struct st_entry *entry)
+st_free_share_entry(struct st_entry *entry)
 {
     free(entry);
 }
 
 struct st_entry *
-find_share_entry(struct file *file)
+st_find_share_entry(struct file *file)
 {
     struct st_entry dummy;
     dummy.file = file;
@@ -45,17 +46,19 @@ find_share_entry(struct file *file)
     return hash_entry(e, struct st_entry, st_elem);;  
 }
 
-/* returns the frame table entry associated with the UPAGE of FILE */
+
+/** returns the frame table entry associated with the UPAGE of FILE.
+ * Returns NULL if no frame allocated at UPAGE
+*/
 struct ft_entry *
-find_frame_for_upage (void *upage, struct file *file)
+st_find_frame_for_upage (void *upage, struct file *file)
 {
-    struct st_entry *entry = find_share_entry (file);
+    struct st_entry *entry = st_find_share_entry (file);
     if (!entry)
     {
         return NULL;
     }
-    
-    struct ft_entry * fte;
+    struct ft_entry * fte = NULL;
     struct list_elem *e = list_front (&entry->upages);
     while (e != list_end (&entry->upages))
     {
@@ -65,6 +68,60 @@ find_frame_for_upage (void *upage, struct file *file)
         }
     }
     return fte;  
+}
+
+/*Insert share entry for FILE and update owners with new owner UPAGE at FRAME fte.*/
+bool
+st_insert_share_entry(struct file *file, void *upage, struct ft_entry *fte)
+{
+    struct share_frame_info *info = (struct share_frame_info *)malloc(sizeof(struct share_frame_info));
+    if (!info)
+    {
+        printf("Cannot alloc share_frame_info for st_entry!\n");
+        return false; 
+    }
+    printf("st_insert_share_entry:: can malloc share_frame_info for st_entry!\n");
+    info->frame = fte;
+    info->upage = upage;
+
+    struct st_entry *e = st_find_share_entry (file);
+    if (!e)
+    {
+        e = (struct st_entry *)malloc(sizeof(struct st_entry *));
+        if (!e)
+        {
+            printf("Cannot alloc share_frame_info for st_entry!\n");
+            return false; 
+        }
+        e->file = file;
+        list_init(&e->upages);
+        
+        hash_insert(&st, &e->st_elem);
+        printf("new share table entry created succesfully\n");
+    }
+    
+    list_push_back(&e->upages, &info->page_elem);
+    return true;
+}
+
+/*remove and free file entry for FILE. Returns true if FILE is removed */
+bool
+st_free_entry (struct file *file)
+{
+    struct st_entry *entry = st_find_share_entry(file);
+    if (entry)
+    {
+        struct list_elem *e = list_front (&entry->upages);
+        while (e != list_end (&entry->upages))
+        {
+            struct share_frame_info *info = list_entry(e, struct share_frame_info, page_elem);
+            free(info);
+        }
+        hash_delete(&st, entry);
+        free(entry);
+        return true;
+    }
+    return false;
 }
 
 /* Share table hash function: entry hashed by the file pointer */
@@ -79,8 +136,8 @@ st_entry_hash(const struct hash_elem *a, void *aux UNUSED)
 static bool
 st_entry_comp(const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED)
 {
-    struct file *file_a = hash_entry (a, struct st_entry, st_elem);
-    struct file *file_b = hash_entry (b, struct st_entry, st_elem);
+    struct file *file_a = hash_entry (a, struct st_entry, st_elem)->file;
+    struct file *file_b = hash_entry (b, struct st_entry, st_elem)->file;
 
     return file_a < file_b;
 }

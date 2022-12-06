@@ -25,6 +25,7 @@ struct hash *get_ft(void);
 void *get_frame(enum palloc_flags, void *, struct file*);
 struct ft_entry * ft_search_entry(void *);
 void free_frame(void *);
-void ft_add_page_entry(struct ft_entry *); 
+void ft_add_page_entry(struct ft_entry *);
+struct ft_entry *ft_search_frame_with_page(void *);
 
 #endif /* vm/frame.h */

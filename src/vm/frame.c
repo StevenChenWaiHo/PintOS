@@ -48,13 +48,18 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
     if (!entry)
     {
         lock_release(&ft_lock);
-        printf("Cannot alloc frame table entry\n");
+        printf("Cannot alloc frame table entry!\n");
         return NULL;
     }
     entry->kernel_page = kernel_page;
     entry->file = file;
     list_init(&entry->owners);
     struct owner *owner = (struct owner *) malloc(sizeof(struct owner));
+    if (!owner)
+    {
+        printf("Cannot alloc frame page owner!\n");
+        return NULL; 
+    }
     owner->process = thread_current();
     owner->process = user_page;
     list_push_back(&entry->owners, &owner->owner_elem);
@@ -80,13 +85,29 @@ ft_search_entry(void *kpage)
   return hash_entry(e, struct ft_entry, ft_elem);
 }
 
-// /**returns the page entry with the provided file name and page.
-//  *if entry does not exist, return null*/
-// struct ft_entry *
-// ft_search_frame_with_page()
-// {
-//     return NULL;    
-// }
+/**returns the page entry with the provided file name and page.
+ *if entry does not exist, return NULL*/
+struct ft_entry *
+ft_search_frame_with_page(void *upage)
+{
+    /* iterate through frame table to find a match */
+    struct hash_iterator i;
+    hash_first (&i, &ft);
+    while (hash_next (&i))
+    {
+        struct ft_entry *f = hash_entry (hash_cur (&i), struct ft_entry, ft_elem);
+        struct list_elem *e = list_front (&f->owners);
+        while (e != list_end (&f->owners))
+        {
+            struct owner *owner = list_entry(e, struct owner, owner_elem);
+            if (owner->upage == upage)
+            {
+              return f;                  
+            }
+        }  
+    }
+    return NULL;
+}
 
 /*remove and free frame for KPAGE*/
 void
