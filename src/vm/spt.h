@@ -10,6 +10,7 @@
 enum page_location
 {
   FILE_SYS,
+  MMAP,
   STACK,
   SWAP
 };
@@ -23,7 +24,7 @@ struct spt_entry
   struct file *file;
   off_t ofs;
   uint32_t rbytes, zbytes;
-  // struct ft_entry frame;
+  //int swap_id;
 };
 
 bool spt_init (struct thread *);
@@ -32,6 +33,8 @@ struct spt_entry *spt_lookup (void *);
 bool spt_remove (void *);
 void spt_destroy (void);
 
+bool lazy_load (struct file *, off_t, uint8_t *,
+  uint32_t, uint32_t, bool, enum page_location);
 bool spt_pf_handler (void *, bool, bool, bool, void *);
 
 #endif

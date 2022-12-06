@@ -353,7 +353,7 @@ process_exit (void)
   if (!list_empty (fd_ref_list)) {
     struct list_elem *e = list_front (fd_ref_list);
     while (e != list_end (fd_ref_list)) {
-      struct fd_elem_struct *open_file = list_entry (e, struct fd_elem_struct, fd_elem);
+      struct file_record *open_file = list_entry (e, struct file_record, f_elem);
       file_close (open_file->file_ref);
       e = list_next (e);
       free (open_file);
@@ -672,92 +672,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT ( (read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
-  /*
-  printf("loading ");
-  printf(writable? "w " : "n/w ");
-  printf("segment at ofs %d to upage %p,\n", ofs, upage);
-  printf("reading in %d and zeroing %d bytes...\n\n", read_bytes, zero_bytes);
-  */
-  while (read_bytes > 0 || zero_bytes > 0) 
-    {
-      /* Calculate how to fill this page.
-         We will read PAGE_READ_BYTES bytes from FILE
-         and zero the final PAGE_ZERO_BYTES bytes. */
-      size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
-      size_t page_zero_bytes = PGSIZE - page_read_bytes;
-      
-//      /* Check if virtual page already allocated */
-//      struct thread *t = thread_current ();
-//      uint8_t *kpage = pagedir_get_page (t->pagedir, upage);
-//      
-//      if (kpage == NULL){
-//        
-//        /* Get a new page of memory. */
-//        kpage = get_frame (PAL_USER, upage);
-//        if (kpage == NULL){
-//          return false;
-//        }
-//        
-//        /* Add the page to the process's address space. */
-//        if (!install_page (upage, kpage, writable)) 
-//        {
-//          free_frame (kpage);
-//          return false; 
-//        }     
-//        
-//      } else {
-//        
-//        /* Check if writable flag for the page should be updated */
-//        if (writable && !pagedir_is_writable (t->pagedir, upage)){
-//          pagedir_set_writable (t->pagedir, upage, writable); 
-//        }
-//        
-//      }
-//
-//      /* Load data into the page. */
-//      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes){
-//        return false; 
-//      }
-//      memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
-      /* New load_segment with lazy loading. */
-      struct spt_entry *entry = spt_lookup (upage);
-      if (!entry) {
-        //printf("load seg: creating entry for %p\n", upage);
-        // No previous entries in SPT, creates one and insert after assign args
-        entry = (struct spt_entry *) malloc (sizeof (struct spt_entry));
-        if (entry == NULL) {
-          return false;
-        }
-        entry->location = FILE_SYS;
-        entry->file = file;
-        entry->ofs = ofs;
-        entry->rbytes = page_read_bytes;
-        entry->zbytes = page_zero_bytes;
-        entry->upage = upage;
-        entry->writable = writable;
-        spt_insert (entry);
-      } else {
-        // Previous entry present, update SPT meta-data.
-        //printf("Previous entry present, update SPT meta-data.\n");
-        if (page_read_bytes != entry->rbytes) {
-          uint32_t old_rb = entry->rbytes;
-          uint32_t old_zb = entry->zbytes;
-          entry->rbytes = page_read_bytes;
-          entry->zbytes = page_zero_bytes;
-          //printf("rb old vs new: %u: %u\n", old_rb, entry->rbytes);
-          //printf("zb old vs new: %u: %u\n", old_zb, entry->zbytes);
-        }
-        if (writable)
-          entry->writable = writable;
-      }
-      /* Advance. */
-      read_bytes -= page_read_bytes;
-      zero_bytes -= page_zero_bytes;
-      upage += PGSIZE;
-      ofs += PGSIZE;
-    }
-  return true;
+  return
+    lazy_load (file, ofs, upage, read_bytes, zero_bytes, writable, FILE_SYS);
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of

@@ -6,6 +6,7 @@
 
 #define ERROR -1
 typedef int pid_t;
+typedef int mapid_t;
 
 void filesys_lock (void);
 void filesys_unlock (void);
