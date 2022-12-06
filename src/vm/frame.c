@@ -26,6 +26,18 @@ get_ft(void)
     return &ft;
 }
 
+void
+ft_access_lock(void)
+{
+    lock_release(&ft_lock);
+}
+
+void
+ft_access_unlock(void)
+{
+    lock_acquire(&ft_lock);
+}
+
 /**
  * returns the frame allocated to the user process frame
  * kernel panic if new page cannot be allocated for now
@@ -34,20 +46,17 @@ get_ft(void)
 void *
 get_frame(enum palloc_flags flag, void *user_page, struct file *file)
 {
-    lock_acquire(&ft_lock);
     void *kernel_page = palloc_get_page(flag);
 
     if (kernel_page == NULL)
     {
         /*TODO: evict a frame and replace with new page allocation*/
-        lock_release(&ft_lock);
         PANIC("No free frames available for allocation!\n");
         return NULL;
     }
     struct ft_entry *entry = (struct ft_entry *) malloc(sizeof(struct ft_entry));
     if (!entry)
     {
-        lock_release(&ft_lock);
         printf("Cannot alloc frame table entry!\n");
         return NULL;
     }
@@ -64,8 +73,6 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
     owner->upage = user_page;
     list_push_back(&entry->owners, &owner->owner_elem);
     hash_insert(&ft, &entry->ft_elem);
-    lock_release(&ft_lock);
-    //printf("get frame: kpage : upage %p : %p \n", kernel_page, user_page);
     return kernel_page;    
 }
 
@@ -73,16 +80,13 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
 struct ft_entry *
 ft_search_entry(void *kpage)
 {
-  lock_acquire(&ft_lock);
   struct ft_entry dummy;
   dummy.kernel_page = kpage;
   struct hash_elem *e = hash_find(&ft, &dummy.ft_elem);
   if (!e)
   {
-    lock_release(&ft_lock);
     return NULL;
   }
-  lock_release(&ft_lock);
   return hash_entry(e, struct ft_entry, ft_elem);
 }
 
@@ -114,19 +118,15 @@ ft_search_frame_with_page(void *upage)
 void
 free_frame(void *kpage)
 {
-    lock_acquire(&ft_lock);
     struct ft_entry *entry = ft_search_entry(kpage);
     hash_delete(&ft, &entry->ft_elem);
     palloc_free_page(entry->kernel_page);
     free(entry);
-    lock_release(&ft_lock);
 }
 
 void
 ft_add_page_entry(struct ft_entry * entry) {
-    lock_acquire(&ft_lock);
     hash_insert(&ft, &entry->ft_elem);
-    lock_acquire(&ft_lock);
 }
 
 static bool

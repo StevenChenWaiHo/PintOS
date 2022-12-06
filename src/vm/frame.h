@@ -23,6 +23,8 @@ struct owner
 void ft_init(void);
 struct hash *get_ft(void);
 void *get_frame(enum palloc_flags, void *, struct file*);
+void ft_access_lock(void);
+void ft_access_unlock(void);
 struct ft_entry * ft_search_entry(void *);
 void free_frame(void *);
 void ft_add_page_entry(struct ft_entry *);

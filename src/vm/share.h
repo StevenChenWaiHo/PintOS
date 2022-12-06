@@ -20,6 +20,8 @@ struct share_frame_info
 
 void st_init(void);
 struct hash *get_st(void);
+void st_access_lock(void);
+void st_access_unlock(void);
 void st_free_share_entry(struct st_entry*);
 struct st_entry *st_find_share_entry(struct file *file);
 struct ft_entry *st_find_frame_for_upage (void *, struct file *);

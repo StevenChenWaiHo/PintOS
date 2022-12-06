@@ -27,6 +27,16 @@ get_st(void)
     return &st;
 }
 
+void st_access_lock(void)
+{
+    lock_acquire(&st_lock);
+}
+
+void st_access_unlock(void)
+{
+    lock_release(&st_lock);
+}
+
 void
 st_free_share_entry(struct st_entry *entry)
 {
