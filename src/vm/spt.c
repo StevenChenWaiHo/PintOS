@@ -16,9 +16,6 @@
 #include "threads/vaddr.h"
 #include "vm/frame.h"
 
-#define STACK_OFS 32
-#define STACK_MAX PGSIZE * 2000            /* Default limit 8MB. */
-
 unsigned spt_hash (const struct hash_elem *, void *);
 bool spt_less (const struct hash_elem *, 
                       const struct hash_elem *,
@@ -146,26 +143,24 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
 bool
 spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void *esp) {
   void *fault_page = pg_round_down (fault_addr);
-
   struct spt_entry *entry = spt_lookup (fault_page);
-
-  if (esp == NULL)
-  {
-    return false;
-  }
   
-  /* Write to read-only page. */
-  if ((write && !entry->writable)) {
-    return false;
-  } else if (entry == NULL) {
+  if (!entry) {
     /* Check if needs stack growth. */ 
+    if (esp == NULL) {
+      return false;
+    }
     if (fault_addr == NULL || is_kernel_vaddr (fault_addr)
       || is_below_ustack (fault_addr) || esp - fault_addr > STACK_OFS
-      || PHYS_BASE - fault_page > STACK_MAX) {
+      || (PHYS_BASE - (int) fault_page) > STACK_MAX) { 
       return false;
     }
     return grow_stack (fault_page);
   } else {
+    /* Write to read-only page. */
+    if ((write && !entry->writable)) {
+      return false;
+    } 
     /* Allocate frame if frame not previously allocated. */
     void *frame_pt = get_frame (PAL_USER, entry->upage);
     if (frame_pt == NULL) {

@@ -7,6 +7,9 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 
+#define STACK_OFS 32
+#define STACK_MAX PGSIZE * 2000            /* Default limit 8MB. */
+
 enum page_location
 {
   FILE_SYS,

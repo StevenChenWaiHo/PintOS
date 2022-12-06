@@ -132,6 +132,7 @@ valid_buffer (const void *buffer, off_t size, bool check_writable) {
    before calling the corresponding system calls. */
 static void
 syscall_handler (struct intr_frame *f) {
+  //printf("Current esp= %p", f->esp);
   valid_pointer (f->esp);
   uint32_t args[3] = {0};
   uint32_t *p = f->esp;
@@ -381,8 +382,10 @@ void
 mmap (uint32_t *args, uint32_t *eax) {
   int fd = args[0];
   void *addr = (void *) args[1];
+  //printf("mmaping at %p\n", addr);
   /* Checking for fd, addr fails. */
-  if (fd >= 2 && addr != 0 && pg_ofs (addr) == 0) {
+  if (fd >= 2 && addr != 0 && pg_ofs (addr) == 0
+    && (PHYS_BASE - (int) addr) > STACK_MAX) {
     struct file *fp = fd_search (fd);
     if (fp) {
       //Needs to renew thru reopen for unix convention of closing files
