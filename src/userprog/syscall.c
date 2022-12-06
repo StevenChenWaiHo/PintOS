@@ -116,12 +116,13 @@ valid_pointer (const void *uaddr) {
 static void
 valid_buffer (const void *buffer, off_t size, bool check_writable) {
   for (int i = 0; i < (size + pg_ofs(buffer)) / PGSIZE + 1; i++) {
+    valid_pointer (buffer);
     if (check_writable && !pagedir_is_writable
-      (thread_current()->pagedir, buffer + i * PGSIZE)) {
-        printf ("Addr failing: %x\n", buffer + i * PGSIZE);
+      (thread_current()->pagedir, buffer)) {
+        //printf ("Addr failing: %x\n", buffer);
         exit_handler (ERROR);
     }
-    valid_pointer (buffer + i * PGSIZE);
+    buffer += PGSIZE;
   }
 }
 
@@ -273,6 +274,15 @@ read (uint32_t *args, uint32_t *eax) {
   int fd = args[0];
   void *buffer = args[1];
   off_t size = args[2];
+  /*
+  printf("%x", buffer);
+  struct spt_entry *entry = spt_lookup (buffer);
+  
+  if (!entry) 
+    printf("a\n\n\n\n\n\n");
+  else
+    printf("location: %d, writable: %d\n", entry->location, entry->writable);
+  */
 
   valid_buffer (buffer, size, true);
 
@@ -375,7 +385,11 @@ mmap (uint32_t *args, uint32_t *eax) {
   if (fd >= 2 && addr != 0 && pg_ofs (addr) == 0) {
     struct file *fp = fd_search (fd);
     if (fp) {
+      //Needs to renew thru reopen for unix convention of closing files
+      filesys_lock ();
+      fp = file_reopen (fp);
       int read_bytes = file_length (fp);
+      filesys_unlock ();
       /* Checking for file size, overlapping pages fails.*/
       if (read_bytes > 0 && mmap_available (addr, read_bytes)) {
         int zero_bytes = (read_bytes % PGSIZE == 0) ? 
@@ -404,7 +418,24 @@ mmap (uint32_t *args, uint32_t *eax) {
 static void mm_destroy (mapid_t id) {
   struct file_record *e = mm_search_struct (id);
   //Some munmap stuff here
-
+  filesys_lock ();
+  int size = file_length (e->file_ref);
+  void *upage = e->mapping_addr;
+  int ofs = 0;
+  /* Iterating through all pages, checking dirty state and writing any dirty ones
+    if this is the last page and is not full, trims the current upage content.*/
+  while (size > 0) {
+    if (pagedir_is_dirty (thread_current ()->pagedir, upage)) {
+      if (size < PGSIZE) {
+        file_write_at (e->file_ref, upage, size, upage - e->mapping_addr);
+      } else {
+        file_write_at (e->file_ref, upage, PGSIZE, upage - e->mapping_addr);        
+      }
+    }
+    upage += PGSIZE;
+    size -= PGSIZE;
+  }
+  filesys_unlock ();
   list_remove (&e->f_elem);
   free (e);
 }
@@ -413,8 +444,7 @@ static void mm_destroy (mapid_t id) {
 void
 munmap (uint32_t *args, uint32_t *eax) {
   mapid_t mapping = args[0];
-
-
+  mm_destroy (mapping);
 }
 
 /* File descriptor storage list and search functions. */
@@ -447,7 +477,7 @@ static struct file_record *mm_search_struct (mapid_t id) {
 /* Search function that iterates through the FD_REF list
    and match their file descriptor ID with the passed argument FD.
    If not found, a stricter design is implemented here
-   and the process will exit with ERROR code.*/
+   and the process will exit with ERROR code. */
 static struct file_record *search_struct (int id, struct list *lp) {
   struct list_elem *e;
 

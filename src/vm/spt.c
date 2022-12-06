@@ -31,6 +31,7 @@ spt_init (struct thread *t) {
 
 bool
 spt_insert (struct spt_entry *entry) {
+  entry->upage = pg_round_down (entry->upage);
   struct hash_elem *e = hash_replace (cur_spt(), &entry->spt_elem);
   if (e) {
     struct spt_entry *replaced = hash_entry (e, struct spt_entry, spt_elem);
@@ -44,7 +45,7 @@ spt_insert (struct spt_entry *entry) {
 struct spt_entry *
 spt_lookup (void *upage) {
   struct spt_entry dummy;
-  dummy.upage = upage;
+  dummy.upage = pg_round_down (upage);
   struct hash_elem *e;
   e = hash_find (cur_spt(), &dummy.spt_elem);
   return e == NULL ? NULL : hash_entry (e, struct spt_entry, spt_elem);
@@ -53,7 +54,7 @@ spt_lookup (void *upage) {
 bool
 spt_remove (void *upage) {
   struct spt_entry dummy;
-  dummy.upage = upage;
+  dummy.upage = pg_round_down (upage);
   struct hash_elem *e = hash_delete (cur_spt(), &dummy.spt_elem);
   if (e) {
     //Possibly freeing any memory allocated to spt_entry variables...
@@ -91,40 +92,6 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
     size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
     size_t page_zero_bytes = PGSIZE - page_read_bytes;
     
-//    /* Check if virtual page already allocated */
-//    struct thread *t = thread_current ();
-//    uint8_t *kpage = pagedir_get_page (t->pagedir, upage);
-//    
-//    if (kpage == NULL){
-//      
-//      /* Get a new page of memory. */
-//      kpage = get_frame (PAL_USER, upage);
-//      if (kpage == NULL){
-//        return false;
-//      }
-//      
-//      /* Add the page to the process's address space. */
-//      if (!install_page (upage, kpage, writable)) 
-//      {
-//        free_frame (kpage);
-//        return false; 
-//      }     
-//      
-//    } else {
-//      
-//      /* Check if writable flag for the page should be updated */
-//      if (writable && !pagedir_is_writable (t->pagedir, upage)){
-//        pagedir_set_writable (t->pagedir, upage, writable); 
-//      }
-//      
-//    }
-//
-//    /* Load data into the page. */
-//    if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes){
-//      return false; 
-//    }
-//    memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
     /* New load_segment with lazy loading. */
     struct spt_entry *entry = spt_lookup (upage);
     if (!entry) {
@@ -208,7 +175,6 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user) {
     */
     return false;
   } else {
-    /*allocate frame if frame not previously allocated.*/
     void *frame_pt = get_frame (PAL_USER, entry->upage);
     //printf("frame kpage: %p\n", frame_pt); 
     if (frame_pt == NULL) {
