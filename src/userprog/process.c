@@ -345,7 +345,7 @@ process_exit (void)
       e = e_next;
     }
   }
-
+  intr_set_level (old_level);
   /* Closing all files that are still open in this process. 
      Corresponding file descriptor pairs are also freed here. */
   filesys_lock ();
@@ -364,6 +364,19 @@ process_exit (void)
      raising the deny_write limit on the file system.*/
   file_close (cur->process_file);
   filesys_unlock ();
+  /* Freeing MMAP elements by calling helper function for munmap. */
+  struct list *mm_ref_list = &thread_current ()->mm_ref;
+  if (!list_empty (mm_ref_list)) {
+    struct list_elem *e = list_front (mm_ref_list);
+    while (e != list_end (mm_ref_list)) {
+      struct file_record *mm_pair = list_entry (e, struct file_record, f_elem);
+      e = list_next (e);
+      mm_destroy (mm_pair);
+    }
+  }
+  
+  /* Freeing SPT elements, removing entries in the swap disk. */
+  spt_destroy ();
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -393,7 +406,7 @@ process_exit (void)
 
   /* Should consult supplemental page table for any extra stuff to free here.*/
 
-  intr_set_level (old_level);
+
   sema_up (&cur->child_thread_coord->sema);
 }
 

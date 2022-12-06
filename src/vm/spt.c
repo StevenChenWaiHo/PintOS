@@ -34,6 +34,7 @@ spt_insert (struct spt_entry *entry) {
   entry->upage = pg_round_down (entry->upage);
   struct hash_elem *e = hash_replace (cur_spt(), &entry->spt_elem);
   if (e) {
+    printf("replaced sth???");
     struct spt_entry *replaced = hash_entry (e, struct spt_entry, spt_elem);
     free (replaced);
   }
@@ -66,7 +67,9 @@ spt_remove (void *upage) {
 
 static void
 spt_destroy_single (struct hash_elem *e, void *aux UNUSED) {
-  //Do something when freeing all
+  struct spt_entry *entry = hash_entry (e, struct spt_entry, spt_elem);
+  /* Free any swap space stuff here... */
+  free (entry);
 }
 
 void
@@ -79,10 +82,12 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
           uint32_t read_bytes, uint32_t zero_bytes, bool writable,
           enum page_location location) {
   /*
-  printf("loading ");
-  printf(writable? "w " : "n/w ");
-  printf("segment at ofs %d to upage %p,\n", ofs, upage);
-  printf("reading in %d and zeroing %d bytes...\n\n", read_bytes, zero_bytes);
+  if (location == MMAP) {
+    printf("loading ");
+    printf(writable? "w " : "n/w ");
+    printf("segment at ofs %d to upage %p,\n", ofs, upage);
+    printf("reading in %d and zeroing %d bytes...\n\n", read_bytes, zero_bytes);
+  }
   */
   while (read_bytes > 0 || zero_bytes > 0) 
   {
@@ -181,7 +186,7 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user) {
       //printf("Dying due to frame.\n");
       return false;
     } else {
-      if (entry->location == FILE_SYS) {
+      if (entry->location == FILE_SYS || entry->location == MMAP) {
         // Lazy loading..
         /* Either zero-out page,
           or fetch the data into the frame from the file,

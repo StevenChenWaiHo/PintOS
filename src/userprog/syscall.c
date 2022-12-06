@@ -380,7 +380,7 @@ static bool mmap_available (void *addr, int read_bytes) {
 void
 mmap (uint32_t *args, uint32_t *eax) {
   int fd = args[0];
-  void *addr = args[1];
+  void *addr = (void *) args[1];
   /* Checking for fd, addr fails. */
   if (fd >= 2 && addr != 0 && pg_ofs (addr) == 0) {
     struct file *fp = fd_search (fd);
@@ -393,7 +393,7 @@ mmap (uint32_t *args, uint32_t *eax) {
       /* Checking for file size, overlapping pages fails.*/
       if (read_bytes > 0 && mmap_available (addr, read_bytes)) {
         int zero_bytes = (read_bytes % PGSIZE == 0) ? 
-          0 : PGSIZE - read_bytes & PGSIZE;
+          0 : PGSIZE - (read_bytes % PGSIZE);
 
         //Do we assume writable is true here and leave blocking writes to
         //executable file for deny-writed calls to file_write?
@@ -414,14 +414,13 @@ mmap (uint32_t *args, uint32_t *eax) {
   *eax = ERROR;
 }
 
-/* Helper function to destroy file descriptor pair when closing a file. */
-static void mm_destroy (mapid_t id) {
-  struct file_record *e = mm_search_struct (id);
+/* Helper function to destroy MMAP pair when closing a file. */
+void
+mm_destroy (struct file_record *e) {
   //Some munmap stuff here
   filesys_lock ();
   int size = file_length (e->file_ref);
   void *upage = e->mapping_addr;
-  int ofs = 0;
   /* Iterating through all pages, checking dirty state and writing any dirty ones
     if this is the last page and is not full, trims the current upage content.*/
   while (size > 0) {
@@ -432,6 +431,8 @@ static void mm_destroy (mapid_t id) {
         file_write_at (e->file_ref, upage, PGSIZE, upage - e->mapping_addr);        
       }
     }
+    pagedir_clear_page (thread_current ()->pagedir, upage);
+    spt_remove (upage);
     upage += PGSIZE;
     size -= PGSIZE;
   }
@@ -440,11 +441,13 @@ static void mm_destroy (mapid_t id) {
   free (e);
 }
 
-/* WIP: Unmaps the mapping of id MAPPING. */
+/* Unmaps the mapping of id MAPPING by calling helper function
+  on the search result. */
 void
 munmap (uint32_t *args, uint32_t *eax) {
   mapid_t mapping = args[0];
-  mm_destroy (mapping);
+  struct file_record *e = mm_search_struct (mapping);
+  mm_destroy (e);
 }
 
 /* File descriptor storage list and search functions. */
