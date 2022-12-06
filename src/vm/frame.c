@@ -52,24 +52,25 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
         return NULL;
     }
     entry->kernel_page = kernel_page;
-    entry->user_page = user_page;
     entry->file = file;
     list_init(&entry->owners);
-    list_push_back(&entry->owners, &thread_current()->frame_elem);
+    struct owner *owner = (struct owner *) malloc(sizeof(struct owner));
+    owner->process = thread_current();
+    owner->process = user_page;
+    list_push_back(&entry->owners, &owner->owner_elem);
     hash_insert(&ft, &entry->ft_elem);
     lock_release(&ft_lock);
     //printf("get frame: kpage : upage %p : %p \n", kernel_page, user_page);
     return kernel_page;    
 }
 
-/*hash find finds the hash element based on an entry's kernel page address*/
+/*hash find finds the hash element based on an entry's KPAGE address*/
 struct ft_entry *
-ft_search_entry(void *upage)
+ft_search_entry(void *kpage)
 {
-  
   lock_acquire(&ft_lock);
   struct ft_entry dummy;
-  dummy.user_page = upage;
+  dummy.kernel_page = kpage;
   struct hash_elem *e = hash_find(&ft, &dummy.ft_elem);
   if (!e)
   {
@@ -79,12 +80,20 @@ ft_search_entry(void *upage)
   return hash_entry(e, struct ft_entry, ft_elem);
 }
 
+// /**returns the page entry with the provided file name and page.
+//  *if entry does not exist, return null*/
+// struct ft_entry *
+// ft_search_frame_with_page()
+// {
+//     return NULL;    
+// }
+
 /*remove and free frame for KPAGE*/
 void
-free_frame(void *upage)
+free_frame(void *kpage)
 {
     lock_acquire(&ft_lock);
-    struct ft_entry *entry = ft_search_entry(upage);
+    struct ft_entry *entry = ft_search_entry(kpage);
     hash_delete(&ft, &entry->ft_elem);
     palloc_free_page(entry->kernel_page);
     free(entry);
@@ -98,18 +107,18 @@ ft_add_page_entry(struct ft_entry * entry) {
     lock_acquire(&ft_lock);
 }
 
-/*entry hashed by the upage address*/
 static bool
 ft_entry_comp(const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED)
 {
-    void *a_address = hash_entry(a, struct ft_entry, ft_elem)->user_page;
-    void *b_address = hash_entry(b, struct ft_entry, ft_elem)->user_page;
+    void *a_address = hash_entry(a, struct ft_entry, ft_elem)->kernel_page;
+    void *b_address = hash_entry(b, struct ft_entry, ft_elem)->kernel_page;
     return a_address < b_address;
 }
 
+/* Hash function: entry hashed by the upage address */
 static unsigned int
 ft_entry_hash(const struct hash_elem *a, void *aux UNUSED)
 {
     const struct ft_entry *e = hash_entry(a, struct ft_entry, ft_elem);
-    return hash_bytes(&e->user_page, sizeof(e->user_page));
+    return hash_bytes(&e->kernel_page, sizeof(e->kernel_page));
 }

@@ -528,7 +528,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
       goto done; 
     }
 
-  //printf("(load) pages to load: %d\n", ehdr.e_phnum);
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++) 

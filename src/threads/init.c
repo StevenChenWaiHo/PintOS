@@ -103,6 +103,7 @@ main (void)
   paging_init ();
   #ifdef VM
     ft_init ();
+    st_init ();
   #endif
 
   /* Segmentation. */

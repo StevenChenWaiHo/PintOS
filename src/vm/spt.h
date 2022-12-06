@@ -22,7 +22,7 @@ struct spt_entry
   struct file *file;
   off_t ofs;
   uint32_t rbytes, zbytes;
-  // struct ft_entry frame;
+  uint32_t *pd;
 };
 
 bool spt_init (struct thread *);

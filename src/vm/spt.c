@@ -97,23 +97,23 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user) {
   if (entry == NULL || is_kernel_vaddr (fault_addr) || !not_present
     || (write && !entry->writable)) {
     
-    if (entry == NULL) {
-      printf("Can't find entry.\n");
-    }
-    if (is_kernel_vaddr (fault_addr)) {
-      printf("Access kernel addr.\n");
-    }
-    if (!not_present) {
-      printf("Writing r/o page.\n");
-    }
-    if (write && !entry->writable) {
-      printf("Write to FILESYS r-o page.\n");
-    }
-    if (user) {
-      printf("User fault!\n");
-    } else {
-      printf("Kernel fault!\n");
-    }
+    // if (entry == NULL) {
+    //   printf("Can't find entry.\n");
+    // }
+    // if (is_kernel_vaddr (fault_addr)) {
+    //   printf("Access kernel addr.\n");
+    // }
+    // if (!not_present) {
+    //   printf("Writing r/o page.\n");
+    // }
+    // if (write && !entry->writable) {
+    //   printf("Write to FILESYS r-o page.\n");
+    // }
+    // if (user) {
+    //   printf("User fault!\n");
+    // } else {
+    //   printf("Kernel fault!\n");
+    // }
 
     return false;
   } else {
@@ -122,35 +122,38 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user) {
    * and instead set the thread's pte to that of an installed page
   */
   struct ft_entry *frame;
-  struct hash_iterator i;
-  hash_first (&i, get_ft());
-  while (hash_next (&i))
-  {
-    struct ft_entry *e = hash_entry (hash_cur (&i), struct ft_entry, ft_elem);
-    if (e->file == entry->file && e->user_page == fault_addr)
-    {
-      frame = e;
-    }
-  }
+  /*TODO: */
+  // struct hash_iterator i;
+  // hash_first (&i, get_ft());
+  // while (hash_next (&i))
+  // {
+  //   struct ft_entry *e = hash_entry (hash_cur (&i), struct ft_entry, ft_elem);
+  //   if (e->file == entry->file && e->user_page == fault_addr)
+  //   {
+  //     frame = e;
+  //   }
+  // }
 
   /*find entry with same file name, if entry is not writable*/
 
-  if (frame)
-  {
-    ASSERT(!pagedir_get_page(thread_current()->pagedir, fault_page));
-     
-      /*set pagedir to existing allocated page*/
-      bool success = pagedir_set_page(thread_current()->pagedir, 
-                      fault_page, e->kernel_page, entry->writable);
-      if (!success)
-      {
-        return false;
-      } 
 
-      /*update frame table entry info*/
-      list_push_back(&e->owners, &thread_current()->frame_elem); 
-      return success;     
-  }
+  
+  // if (frame)
+  // {
+  //   ASSERT(!pagedir_get_page(thread_current()->pagedir, fault_page));
+     
+  //     /*set pagedir to existing allocated page*/
+  //     bool success = pagedir_set_page(thread_current()->pagedir, 
+  //                     fault_page, e->kernel_page, entry->writable);
+  //     if (!success)
+  //     {
+  //       return false;
+  //     } 
+
+  //     /*update frame table entry info*/
+  //     list_push_back(&e->owners, &thread_current()->frame_elem); 
+  //     return success;     
+  // }
 
   /*allocate frame if frame not previously allocated.*/
     void *frame_pt = get_frame (PAL_USER, entry->upage, entry->file);
