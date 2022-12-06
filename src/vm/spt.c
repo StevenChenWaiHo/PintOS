@@ -106,16 +106,16 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
 
       if (!writable)
       {
-        printf(writable? "w\n" : "n/w\n");
+        //printf(writable? "w\n" : "n/w\n");
         struct ft_entry *fte = st_find_frame_for_upage(upage, file);
         if (fte)
         {
           bool inserted = st_insert_share_entry(file, upage, fte);
           bool success = install_page(upage, fte->kernel_page, writable);
-          printf((inserted && success)? "sharing successful\n" : "sharing unsuccessful\n");
+          //printf((inserted && success)? "sharing successful\n" : "sharing unsuccessful\n");
         } else
         {
-          printf("share table no such frame\n");
+          //printf("share table no such frame\n");
         }
       }
       /* *********** SHARING DONE *********** */
@@ -242,7 +242,7 @@ grow_stack(void *upage) {
   entry->location = STACK;
   entry->writable = true;
   spt_insert(entry);
-  void* kpage = get_frame (PAL_USER | PAL_ZERO, upage);
+  void* kpage = get_frame (PAL_USER | PAL_ZERO, upage, NULL);
   if (kpage != NULL && !install_page(upage, kpage, true))
   {
     return false;
