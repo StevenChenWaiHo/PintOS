@@ -1,7 +1,6 @@
 #include "vm/spt.h"
 #include <hash.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 #include "devices/swap.h"
 #include "filesys/file.h"
@@ -25,6 +24,7 @@ bool spt_less (const struct hash_elem *,
                       void *);
 static struct hash *cur_spt (void);
 static void spt_destroy_single (struct hash_elem *, void *);
+static bool check_growth (void *, void *);
 static bool grow_stack(void *);
 static void zero_from (void *, int);
 static bool read_segment_from_file (struct spt_entry *, void *);
@@ -138,28 +138,32 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
   return true;
 }
 
+static bool
+check_growth (void *fault_addr, void *esp) {
+  void *fault_page = pg_round_down (fault_addr);
+  if (fault_addr == NULL || is_kernel_vaddr (fault_addr)
+    || is_below_ustack (fault_addr) || PHYS_BASE - fault_page > STACK_MAX
+    || esp - fault_addr > STACK_OFS || fault_addr - esp > STACK_OFS) {
+    return false;
+  }
+  return grow_stack (fault_page);
+}
+
 bool
 spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void *esp) {
   void *fault_page = pg_round_down (fault_addr);
 
   struct spt_entry *entry = spt_lookup (fault_page);
 
-  if (esp == NULL)
-  {
-    return false;
-  }
+  // printf("%p, %p", esp, fault_addr);
+  // printf("%d\n", esp - fault_addr);
   
   /* Write to read-only page. */
   if ((write && !entry->writable)) {
     return false;
   } else if (entry == NULL) {
     /* Check if needs stack growth. */ 
-    if (fault_addr == NULL || is_kernel_vaddr (fault_addr)
-      || is_below_ustack (fault_addr) || esp - fault_addr > STACK_OFS
-      || PHYS_BASE - fault_page > STACK_MAX) {
-      return false;
-    }
-    return grow_stack (fault_page);
+    return check_growth(fault_addr, esp);
   } else {
     /* Allocate frame if frame not previously allocated. */
     void *frame_pt = get_frame (PAL_USER, entry->upage);
