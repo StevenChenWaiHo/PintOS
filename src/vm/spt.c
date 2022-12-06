@@ -24,6 +24,7 @@ bool spt_less (const struct hash_elem *,
                       void *);
 static struct hash *cur_spt (void);
 static void spt_destroy_single (struct hash_elem *, void *);
+static bool check_stack_access (void *, void *);
 static bool check_growth (void *, void *);
 static bool grow_stack(void *);
 static void zero_from (void *, int);
@@ -139,11 +140,16 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
 }
 
 static bool
+check_stack_access (void *fault_addr, void *esp) {
+  return PHYS_BASE - pg_round_down(fault_addr) <= STACK_MAX
+    && esp - fault_addr <= STACK_OFS && fault_addr - esp <= STACK_OFS;
+}
+
+static bool
 check_growth (void *fault_addr, void *esp) {
   void *fault_page = pg_round_down (fault_addr);
   if (fault_addr == NULL || is_kernel_vaddr (fault_addr)
-    || is_below_ustack (fault_addr) || PHYS_BASE - fault_page > STACK_MAX
-    || esp - fault_addr > STACK_OFS || fault_addr - esp > STACK_OFS) {
+    || !check_stack_access(fault_addr, esp)) {
     return false;
   }
   return grow_stack (fault_page);
@@ -155,8 +161,10 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
 
   struct spt_entry *entry = spt_lookup (fault_page);
 
-  // printf("%p, %p", esp, fault_addr);
-  // printf("%d\n", esp - fault_addr);
+  if (check_stack_access(fault_addr, esp))
+  {
+    return grow_stack(fault_page);
+  }
   
   /* Write to read-only page. */
   if ((write && !entry->writable)) {
