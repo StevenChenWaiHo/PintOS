@@ -439,7 +439,8 @@ mm_destroy (struct file_record *e) {
     upage += PGSIZE;
     size -= PGSIZE;
   }
-  filesys_unlock ();
+  file_close(e->file_ref);
+  filesys_unlock();
   list_remove (&e->f_elem);
   free (e);
 }
