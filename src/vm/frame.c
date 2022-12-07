@@ -6,16 +6,27 @@
 #include "threads/thread.h"
 #include "threads/synch.h"
 #include "threads/palloc.h"
+#include "vm/spt.h"
+#include "userprog/pagedir.h"
+#include "devices/swap.h"
+
+/* EVICT: Declare snd_chance list and its pointer. */
+struct list snd_chance;
 
 struct hash ft;
 struct lock ft_lock;
 
 static bool ft_entry_comp(const struct hash_elem *, const struct hash_elem *, void * UNUSED);
 static unsigned int ft_entry_hash(const struct hash_elem *, void * UNUSED);
+void swap_page(void *upage, struct spt_entry *entry);
+void evict_filesys(void *upage, struct spt_entry *entry);
+void evict_mmap(void *upage, struct spt_entry *entry);
+void evict_stack(void *upage, struct spt_entry *entry);
 
-void
-ft_init(void)
+    void ft_init(void)
 {
+    /* EVICT: Init snd_chance list. */
+    list_init(&snd_chance);
     hash_init(&ft, ft_entry_hash, ft_entry_comp, NULL);
     lock_init(&ft_lock);
 }
@@ -29,13 +40,47 @@ get_ft(void)
 void
 ft_access_lock(void)
 {
-    lock_release(&ft_lock);
+    lock_acquire(&ft_lock);
 }
 
 void
 ft_access_unlock(void)
 {
-    lock_acquire(&ft_lock);
+    lock_release(&ft_lock);
+}
+
+/* Handler for swapping page to swap disk. */
+void swap_page (void *upage, struct spt_entry *entry)
+{
+    printf("SWAP\n");
+    entry->swap_slot = swap_out(upage);
+    entry->location = SWAP;
+    pagedir_clear_page(entry->pd, upage);
+}
+
+/* Function for eviction a filesys page. */
+void evict_filesys (void *upage, struct spt_entry *entry) 
+{
+    if (entry->writable)
+    {
+        swap_page(upage, entry);
+    }
+    else
+    {
+        pagedir_clear_page(entry->pd, upage);
+    }
+}
+
+/* Function for eviction a mmap page. */
+void evict_mmap (void *upage, struct spt_entry *entry) 
+{
+
+}
+
+/* Function for eviction a stack page. */
+void evict_stack (void *upage, struct spt_entry *entry) 
+{
+    swap_page(upage, entry);
 }
 
 /**
@@ -50,8 +95,53 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
 
     if (kernel_page == NULL)
     {
+        printf("No free frames available for allocation!\n");
         /*TODO: evict a frame and replace with new page allocation*/
-        PANIC("No free frames available for allocation!\n");
+        struct ft_entry *cur_ft = list_entry(list_pop_front(&snd_chance), struct ft_entry, ele_elem);
+
+        while (true){
+            if (!cur_ft->pinned){
+                printf("This page is not pinned\n");
+                void *cur_upage = list_entry(list_front(&cur_ft->owners), struct owner, owner_elem);
+                struct spt_entry *cur_spt = spt_lookup(cur_upage);
+                if (pagedir_is_accessed(thread_current ()->pagedir, cur_upage))
+                {
+                    printf("Accessed bit of this page is set\n");
+                    pagedir_set_accessed (thread_current ()->pagedir, cur_upage, false);
+                }
+                else
+                {
+                    printf("Accessed bit of this page is not set\n");
+                    printf("%p", cur_upage);
+                    switch (cur_spt->location)
+                    {
+                        case FILE_SYS:
+                            printf("Evicting filesys page.\n");
+                            evict_filesys(cur_upage, cur_spt);
+                            break;
+
+                        case MMAP:
+                            printf("Evicting mmap page.\n");
+                            evict_mmap(cur_upage, cur_spt);
+                            break;
+
+                        case STACK:
+                            printf("Evicting stack page.\n");
+                            evict_stack(cur_upage, cur_spt);
+                            break;
+
+                        default:
+                            printf("Evicting unknown page.\n");
+                            PANIC("Page stored in unknown location");
+                            break;
+                    }
+                    break;
+                }
+            }
+            list_push_back(&snd_chance, &cur_ft->ele_elem);
+            cur_ft = list_pop_front(&snd_chance);
+        }
+
         return NULL;
     }
     struct ft_entry *entry = (struct ft_entry *) malloc(sizeof(struct ft_entry));
@@ -62,6 +152,7 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
     }
     entry->kernel_page = kernel_page;
     entry->file = file;
+    entry->pinned = false;
     list_init(&entry->owners);
     struct owner *owner = (struct owner *) malloc(sizeof(struct owner));
     if (!owner)
@@ -72,8 +163,13 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
     owner->process = thread_current();
     owner->upage = user_page;
     list_push_back(&entry->owners, &owner->owner_elem);
+    printf("%p", user_page);
+    
+    list_push_back(&snd_chance, &entry->ele_elem);
+    ft_access_lock ();
     hash_insert(&ft, &entry->ft_elem);
-    return kernel_page;    
+    ft_access_unlock ();
+    return kernel_page;
 }
 
 /*hash find finds the hash element based on an entry's KPAGE address*/

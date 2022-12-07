@@ -25,6 +25,7 @@ struct spt_entry
   bool writable;
   struct hash_elem spt_elem;
   struct file *file;
+  size_t swap_slot;
   off_t ofs;
   uint32_t rbytes, zbytes;
   uint32_t *pd;

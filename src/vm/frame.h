@@ -9,6 +9,7 @@ struct ft_entry
     void *kernel_page;              /*page allocated in kernel virtual memory*/
     struct file *file;              /*name of the file this frame is storing*/
     struct list owners;             /*processes that owns the frame*/
+    bool pinned;                    /* Boolean for pinned frame*/
     struct list_elem ele_elem;      /*list elem for eviction round robin list*/
     struct hash_elem ft_elem;       /*hash elem for frame table*/
 };
