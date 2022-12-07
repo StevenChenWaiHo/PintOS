@@ -350,7 +350,7 @@ tell (uint32_t *args, uint32_t *eax) {
   struct file *fp = fd_search (fd);
 
   filesys_lock ();
-  *eax = file_tell (fd);
+  *eax = file_tell (fp);
   filesys_unlock ();
 }
 
