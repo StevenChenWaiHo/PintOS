@@ -49,10 +49,11 @@ st_find_share_entry(struct file *file)
     struct st_entry dummy;
     dummy.file = file;
      struct hash_elem *e = hash_find(&st, &dummy.st_elem);
-    if (!e)
+    if (e == NULL)
     {
         return NULL;
     }
+    printf("########st_find_share_entry: found file at %p\n", file);
     return hash_entry(e, struct st_entry, st_elem);
 }
 
@@ -63,6 +64,7 @@ st_find_share_entry(struct file *file)
 struct ft_entry *
 st_find_frame_for_upage (void *upage, struct file *file)
 {
+    printf("st_find_frame_for_upage: finding upage: %p. file: %p\n", upage, file);
     struct st_entry *entry = st_find_share_entry (file);
     if (!entry)
     {
@@ -95,8 +97,9 @@ st_insert_share_entry(struct file *file, void *upage, struct ft_entry *fte)
     info->upage = upage;
 
     struct st_entry *e = st_find_share_entry (file);
-    if (!e)
+    if (e == NULL)
     {
+        printf("***st_insert_share_entry: new file %p\n", file);
         e = (struct st_entry *)malloc(sizeof(struct st_entry));
         if (!e)
         {
@@ -107,7 +110,7 @@ st_insert_share_entry(struct file *file, void *upage, struct ft_entry *fte)
         list_init(&e->upages);
         
         hash_insert(&st, &e->st_elem);
-        // printf("new share table entry created succesfully\n");
+        printf("new share table entry created succesfully\n");
     }
     
     list_push_back(&e->upages, &info->page_elem);

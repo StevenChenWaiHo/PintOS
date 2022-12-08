@@ -383,7 +383,17 @@ process_exit (void)
      to the kernel-only page directory. */
   uint32_t *pd;
   pd = cur->pagedir;
-  if (pd != NULL)
+    /**
+   * SHARING: do not destroy file at fd if page is being shared
+   **/
+  st_access_lock();
+  ft_access_lock();
+  struct ft_entry *fte = ft_search_frame_with_owner(thread_current());
+  if (fte && (list_next(list_front(&fte->owners)) != list_end(&fte->owners))) {
+    pd == NULL;
+    printf ("page shared, not freed\n");
+  } 
+  else if (pd != NULL)
     {
       /* Correct ordering here is crucial.  We must set
          cur->pagedir to NULL before switching page directories,
@@ -396,6 +406,8 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+  st_access_unlock();
+  ft_access_unlock();
 
   cur_coord->child_is_terminated = true;
   

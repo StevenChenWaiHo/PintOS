@@ -27,13 +27,13 @@ get_ft(void)
 }
 
 void
-ft_access_lock(void)
+ft_access_unlock(void)
 {
     lock_release(&ft_lock);
 }
 
 void
-ft_access_unlock(void)
+ft_access_lock(void)
 {
     lock_acquire(&ft_lock);
 }
@@ -106,6 +106,28 @@ ft_search_frame_with_page(void *upage)
         {
             struct owner *owner = list_entry(e, struct owner, owner_elem);
             if (owner->upage == upage)
+            {
+              return f;                  
+            }
+        }  
+    }
+    return NULL;
+}
+
+struct ft_entry *
+ft_search_frame_with_owner(struct thread *t)
+{
+    /* iterate through frame table to find a match */
+    struct hash_iterator i;
+    hash_first (&i, &ft);
+    while (hash_next (&i))
+    {
+        struct ft_entry *f = hash_entry (hash_cur (&i), struct ft_entry, ft_elem);
+        struct list_elem *e = list_front (&f->owners);
+        while (e != list_end (&f->owners))
+        {
+            struct owner *owner = list_entry(e, struct owner, owner_elem);
+            if (owner->process == t)
             {
               return f;                  
             }

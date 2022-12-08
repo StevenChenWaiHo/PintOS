@@ -104,20 +104,34 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
       *   ii. copy KPAGE of the shared frame to KPAGE of PAGEDIR of thread_current()
       */
 
+      printf(writable? "lazy load: w\n" : "lazy load:  n/w\n");
       if (!writable)
       {
-        //printf(writable? "w\n" : "n/w\n");
+        st_access_lock();
+        ft_access_lock();
         struct ft_entry *fte = st_find_frame_for_upage(upage, file);
         if (fte)
         {
           bool inserted = st_insert_share_entry(file, upage, fte);
           bool success = install_page(upage, fte->kernel_page, writable);
-          //printf((inserted && success)? "sharing successful\n" : "sharing unsuccessful\n");
+          struct owner *owner = (struct owner *) malloc(sizeof(struct owner));
+          if (!owner)
+          {
+              printf("Cannot alloc frame page owner!\n");
+              return NULL; 
+          }
+          owner->process = thread_current();
+          owner->upage = upage;
+          list_push_back(&(fte->owners), &owner->owner_elem);
+          printf((inserted && success)? "lazy loading: sharing successful\n" : "lazy loading: sharing unsuccessful\n");
         } else
         {
-          //printf("share table no such frame\n");
+          printf("lazy load: share table no such frame\n");
         }
+        st_access_unlock();
+        ft_access_unlock();
       }
+
       /* *********** SHARING DONE *********** */
 
     /* Calculate how to fill this page.
@@ -170,6 +184,8 @@ bool
 spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void *esp) {
   void *fault_page = pg_round_down (fault_addr);
   struct spt_entry *entry = spt_lookup (fault_page);
+
+  printf("spt_pf_handler:fault addr %p\n", fault_page);
   
   if (!entry) {
     /* Check if needs stack growth. */ 
@@ -186,7 +202,43 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
     /* Write to read-only page. */
     if ((write && !entry->writable)) {
       return false;
-    } 
+    }
+  //   /** SHARING: 
+  //    * If uaddr is in share table, install page from there
+  //   */
+
+  //  if (!entry->writable)
+  //     {
+  //      ft_access_lock();
+          // st_access_lock();
+          // printf("spt_pf_handler: find sharing frame\n");
+  //       struct ft_entry *fte = st_find_frame_for_upage(entry->upage, entry->file);
+  //       if (fte)
+  //       {
+  //         printf("spt_pf_handler helloooooo\n");
+  //         bool inserted = st_insert_share_entry(entry->file, entry->upage, fte);
+  //         bool success = install_page(entry->upage, fte->kernel_page, entry->writable);
+  //         printf((inserted && success)? "spt_pf_handler: sharing successful\n" : "spt_pf_handler: sharing unsuccessful\n");
+  //         struct owner *owner = (struct owner *) malloc(sizeof(struct owner));
+  //         if (!owner)
+  //         {
+  //             printf("Cannot alloc frame page owner!\n");
+  //             return NULL; 
+  //         }
+  //         owner->process = thread_current();
+  //         owner->upage = fault_page;
+  //         list_push_back(&(fte->owners), &owner->owner_elem);
+  //         printf("thread tid %d piggybacking on %p\n", thread_current()->tid, entry->upage);
+  //         return true;
+  //       } else
+  //       {
+  //         printf("spt_pf_handler: share table no such frame\n");
+  //       }
+            // ft_access_unlock();
+            // st_access_unlock();
+  //     }
+
+    
     /* Allocate frame if frame not previously allocated. */
     void *frame_pt = get_frame (PAL_USER, entry->upage, entry->file);
     if (frame_pt == NULL) {
@@ -217,13 +269,17 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
         */
         if (!entry->writable)
         {
-          // printf("spt_pf_handler:: ofs: %d, file: %p, upage %p\n", entry->ofs, entry->file, entry->upage);
-          struct ft_entry *ft_entry = ft_search_entry(frame_pt);
-          // printf((ft_entry != NULL)? "frame successfully fetched\n" : "frame unsuccessfully fetched\n");
+        ft_access_lock();
+        st_access_lock();
+        struct ft_entry *ft_entry = ft_search_entry(frame_pt);
           bool inserted = st_insert_share_entry(entry->file, entry->upage, ft_entry);
-          // printf(inserted? "new sharing entry inserted successfully\n" : "new sharing entry inserted UNsuccessfully\n");
+          printf("at %p ", entry->upage);
+          printf(inserted? "new sharing entry inserted successfully\n" : "new sharing entry inserted UNsuccessfully\n");
           ASSERT(inserted);
+          ft_access_unlock();
+          st_access_unlock();
         }
+
         /* *********** SHARING DONE *********** */
       }
       if (entry->location == SWAP) {
