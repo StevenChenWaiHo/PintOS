@@ -228,6 +228,10 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
       }
       if (entry->location == SWAP) {
         //Takes information in swap disk thru swap_in
+        swap_in(frame_pt, entry->swap_slot);
+        if (!install_page (fault_page, frame_pt, entry->writable)) {
+          return false;
+        }
       }
     }
   }

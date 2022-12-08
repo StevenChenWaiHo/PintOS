@@ -417,6 +417,18 @@ mmap (uint32_t *args, uint32_t *eax) {
   *eax = ERROR;
 }
 
+void mm_file_write(struct file *file, int size, void *upage, off_t ofs) 
+{
+  if (pagedir_is_dirty (thread_current ()->pagedir, upage)) {
+      if (size < PGSIZE) {
+        file_write_at (file, upage, size, ofs);
+      } else {
+        file_write_at (file, upage, PGSIZE, ofs);        
+      }
+    }
+    pagedir_clear_page (thread_current ()->pagedir, upage);
+}
+
 /* Helper function to destroy MMAP pair when closing a file. */
 void
 mm_destroy (struct file_record *e) {
@@ -427,17 +439,10 @@ mm_destroy (struct file_record *e) {
   /* Iterating through all pages, checking dirty state and writing any dirty ones
     if this is the last page and is not full, trims the current upage content.*/
   while (size > 0) {
-    if (pagedir_is_dirty (thread_current ()->pagedir, upage)) {
-      if (size < PGSIZE) {
-        file_write_at (e->file_ref, upage, size, upage - e->mapping_addr);
-      } else {
-        file_write_at (e->file_ref, upage, PGSIZE, upage - e->mapping_addr);        
-      }
-    }
-    pagedir_clear_page (thread_current ()->pagedir, upage);
-    spt_remove (upage);
-    upage += PGSIZE;
-    size -= PGSIZE;
+      mm_file_write(e->file_ref, size, upage, upage - e->mapping_addr);
+      spt_remove(upage);
+      upage += PGSIZE;
+      size -= PGSIZE;
   }
   file_close(e->file_ref);
   filesys_unlock();

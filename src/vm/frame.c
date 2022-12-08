@@ -9,9 +9,10 @@
 #include "vm/spt.h"
 #include "userprog/pagedir.h"
 #include "devices/swap.h"
+#include "userprog/syscall.h"
 
 /* EVICT: Declare snd_chance list and its pointer. */
-struct list snd_chance;
+static struct list snd_chance;
 
 struct hash ft;
 struct lock ft_lock;
@@ -23,7 +24,7 @@ void evict_filesys(void *upage, struct spt_entry *entry);
 void evict_mmap(void *upage, struct spt_entry *entry);
 void evict_stack(void *upage, struct spt_entry *entry);
 
-    void ft_init(void)
+void ft_init(void)
 {
     /* EVICT: Init snd_chance list. */
     list_init(&snd_chance);
@@ -74,7 +75,7 @@ void evict_filesys (void *upage, struct spt_entry *entry)
 /* Function for eviction a mmap page. */
 void evict_mmap (void *upage, struct spt_entry *entry) 
 {
-
+    mm_file_write(entry->file, entry->rbytes, upage, entry->ofs);
 }
 
 /* Function for eviction a stack page. */
@@ -98,12 +99,14 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
         printf("No free frames available for allocation!\n");
         /*TODO: evict a frame and replace with new page allocation*/
         struct ft_entry *cur_ft = list_entry(list_pop_front(&snd_chance), struct ft_entry, ele_elem);
-
-        while (true){
+        ASSERT(cur_ft);
+        while (true)
+        {
             if (!cur_ft->pinned){
                 printf("This page is not pinned\n");
-                void *cur_upage = list_entry(list_front(&cur_ft->owners), struct owner, owner_elem);
+                void *cur_upage = list_entry(list_front(&cur_ft->owners), struct owner, owner_elem)->upage;
                 struct spt_entry *cur_spt = spt_lookup(cur_upage);
+                printf("%p", cur_upage);
                 if (pagedir_is_accessed(thread_current ()->pagedir, cur_upage))
                 {
                     printf("Accessed bit of this page is set\n");
@@ -112,7 +115,6 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
                 else
                 {
                     printf("Accessed bit of this page is not set\n");
-                    printf("%p", cur_upage);
                     switch (cur_spt->location)
                     {
                         case FILE_SYS:
@@ -122,7 +124,7 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
 
                         case MMAP:
                             printf("Evicting mmap page.\n");
-                            evict_mmap(cur_upage, cur_spt);
+                            evict_mmap(cur_upage, cur_spt); 
                             break;
 
                         case STACK:
