@@ -51,11 +51,12 @@ void ft_access_unlock(void)
 /* Handler for swapping page to swap disk. */
 void swap_page(void *upage, struct spt_entry *entry)
 {
-  if (upage == 0x80e1000 || upage == 0x80e0000) {
-    hex_dump (upage, upage, 8, false);
-    printf("Dirty? %d\n", pagedir_is_dirty (thread_current ()->pagedir, upage));
-  }
-  printf("Swapping out page at %p, w? %d\n", upage, entry->writable);
+  // if (upage == 0x80e1000 || upage == 0x80e0000) {
+  //   hex_dump (upage, upage, 8, false);
+  //   printf("Dirty? %d\n", pagedir_is_dirty (thread_current ()->pagedir, upage));
+  // }
+  //hex_dump (upage, upage, 8, false);
+  //printf("Swapping out page at %p, w? %d\n", upage, entry->writable);
   entry->swap_slot = swap_out(upage);
   if (entry->swap_slot == -1) {
     //Swap failed as swap disk is full
