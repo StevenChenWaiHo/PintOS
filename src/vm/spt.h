@@ -15,7 +15,6 @@ enum page_location
   FILE_SYS,
   MMAP,
   STACK,
-  SWAP
 };
 
 struct spt_entry
@@ -26,6 +25,7 @@ struct spt_entry
   struct hash_elem spt_elem;
   struct file *file;
   size_t swap_slot;
+  bool swapped;
   off_t ofs;
   uint32_t rbytes, zbytes;
   uint32_t *pd;

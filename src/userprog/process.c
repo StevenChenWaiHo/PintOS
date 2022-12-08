@@ -703,8 +703,15 @@ setup_stack (void **esp)
   if (kpage != NULL) 
     {
       success = install_page (upage, kpage, true);
-      if (success)
+      if (success) {
+        struct spt_entry *entry = (struct spt_entry *) malloc (sizeof (struct spt_entry));
+        entry->upage = upage;
+        entry->location = STACK;
+        entry->writable = true;
+        entry->swapped = false;
+        spt_insert (entry);
         *esp = PHYS_BASE;
+      }
       else
         free_frame (kpage);
     }

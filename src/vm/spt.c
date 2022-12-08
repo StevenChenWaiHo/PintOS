@@ -142,6 +142,7 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
       entry->zbytes = page_zero_bytes;
       entry->upage = upage;
       entry->writable = writable;
+      entry->swapped = false;
       spt_insert (entry);
     } else {
       // Previous entry present, update SPT meta-data (load_segment).
@@ -192,7 +193,15 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
     if (frame_pt == NULL) {
       return false;
     } else {
-      if (entry->location == FILE_SYS || entry->location == MMAP) {
+      //Swapping takes place first before checking location
+      if (entry->swapped) {
+        //Takes information in swap disk thru swap_in
+        swap_in(frame_pt, entry->swap_slot);
+        entry->swapped = false;
+        if (!install_page (fault_page, frame_pt, entry->writable)) {
+          return false;
+        }
+      } else if (entry->location == FILE_SYS || entry->location == MMAP) {
         // Lazy loading..
         /* Either zero-out page,
           or fetch the data into the frame from the file,
@@ -226,13 +235,6 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
         }
         /* *********** SHARING DONE *********** */
       }
-      if (entry->location == SWAP) {
-        //Takes information in swap disk thru swap_in
-        swap_in(frame_pt, entry->swap_slot);
-        if (!install_page (fault_page, frame_pt, entry->writable)) {
-          return false;
-        }
-      }
     }
   }
   //printf("---------LAZY LOADING COMPLETE---------\n\n");
@@ -245,7 +247,8 @@ grow_stack(void *upage) {
   entry->upage = upage;
   entry->location = STACK;
   entry->writable = true;
-  spt_insert(entry);
+  entry->swapped = false;
+  spt_insert (entry);
   void* kpage = get_frame (PAL_USER | PAL_ZERO, upage, NULL);
   if (kpage != NULL && !install_page(upage, kpage, true))
   {
