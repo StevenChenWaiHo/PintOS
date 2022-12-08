@@ -202,8 +202,9 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
       if (entry->swapped) {
         //Takes information in swap disk thru swap_in
         swap_in(frame_pt, entry->swap_slot);
+        pagedir_set_dirty(thread_current()->pagedir, fault_page, true);
         entry->swapped = false;
-        printf("Swapping in page at %p, w? %d\n", fault_page, entry->writable);
+        //printf("Swapping in page at %p, w? %d\n", fault_page, entry->writable);
         if (!install_page (fault_page, frame_pt, entry->writable)) {
           return false;
         }
@@ -212,7 +213,7 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
         /* Either zero-out page,
           or fetch the data into the frame from the file,
           then point PTE to the frame. */
-        printf("Loading in page at %p, w? %d\n", fault_page, entry->writable);
+        //printf("Loading in page at %p, w? %d\n", fault_page, entry->writable);
         if (entry->zbytes == PGSIZE) {
           zero_from (frame_pt, PGSIZE);
         } else if (!read_segment_from_file (entry, frame_pt)) {
@@ -266,7 +267,7 @@ grow_stack(void *upage) {
 
 static void
 zero_from (void *from, int size) {
-  memset (from, 0, PGSIZE);
+  memset (from, 0, size);
 }
 
 static bool
