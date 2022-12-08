@@ -44,7 +44,7 @@ ft_access_lock(void)
  * TODO: eviction and replace* 
 */
 void *
-get_frame(enum palloc_flags flag, void *user_page, struct file *file)
+get_frame(enum palloc_flags flag, void *user_page, char *file_name)
 {
     void *kernel_page = palloc_get_page(flag);
 
@@ -61,7 +61,7 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
         return NULL;
     }
     entry->kernel_page = kernel_page;
-    entry->file = file;
+    entry->file_name = file_name;
     list_init(&entry->owners);
     struct owner *owner = (struct owner *) malloc(sizeof(struct owner));
     if (!owner)

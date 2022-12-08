@@ -400,7 +400,7 @@ mmap (uint32_t *args, uint32_t *eax) {
 
         //Do we assume writable is true here and leave blocking writes to
         //executable file for deny-writed calls to file_write?
-        lazy_load (fp, 0, addr, read_bytes, zero_bytes, true, MMAP);
+        lazy_load (fp, NULL, 0, addr, read_bytes, zero_bytes, true, MMAP);
 
         /* Insert MMAP pair into MM_REF,
           allocating a new MAPID to the mapping. */

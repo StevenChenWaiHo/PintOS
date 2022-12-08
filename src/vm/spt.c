@@ -82,9 +82,11 @@ spt_destroy () {
 
 /* Assume page present. */
 bool
-lazy_load (struct file *file, off_t ofs, uint8_t *upage,
+lazy_load (struct file *file, char *file_name, off_t ofs, uint8_t *upage,
           uint32_t read_bytes, uint32_t zero_bytes, bool writable,
           enum page_location location) {
+  printf("1&&&&&&&&&&&&&&&&&&&&&&&&&&&file name: %s\n", file_name);
+
   /*
   if (location == MMAP) {
     printf("loading ");
@@ -93,6 +95,7 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
     printf("reading in %d and zeroing %d bytes...\n\n", read_bytes, zero_bytes);
   }
   */
+
   while (read_bytes > 0 || zero_bytes > 0) 
   {
     /**
@@ -109,10 +112,10 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
       {
         st_access_lock();
         ft_access_lock();
-        struct ft_entry *fte = st_find_frame_for_upage(upage, file);
+        struct ft_entry *fte = st_find_frame_for_upage(upage, file_name);
         if (fte)
         {
-          bool inserted = st_insert_share_entry(file, upage, fte);
+          bool inserted = st_insert_share_entry(file_name, upage, fte);
           bool success = install_page(upage, fte->kernel_page, writable);
           struct owner *owner = (struct owner *) malloc(sizeof(struct owner));
           if (!owner)
@@ -182,6 +185,7 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
 
 bool
 spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void *esp) {
+  st_printf();
   void *fault_page = pg_round_down (fault_addr);
   struct spt_entry *entry = spt_lookup (fault_page);
 
@@ -212,11 +216,11 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
   //      ft_access_lock();
           // st_access_lock();
           // printf("spt_pf_handler: find sharing frame\n");
-  //       struct ft_entry *fte = st_find_frame_for_upage(entry->upage, entry->file);
+  //       struct ft_entry *fte = st_find_frame_for_upage(entry->upage, entry->file_name);
   //       if (fte)
   //       {
   //         printf("spt_pf_handler helloooooo\n");
-  //         bool inserted = st_insert_share_entry(entry->file, entry->upage, fte);
+  //         bool inserted = st_insert_share_entry(entry->file_name, entry->upage, fte);
   //         bool success = install_page(entry->upage, fte->kernel_page, entry->writable);
   //         printf((inserted && success)? "spt_pf_handler: sharing successful\n" : "spt_pf_handler: sharing unsuccessful\n");
   //         struct owner *owner = (struct owner *) malloc(sizeof(struct owner));
@@ -272,7 +276,7 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
         ft_access_lock();
         st_access_lock();
         struct ft_entry *ft_entry = ft_search_entry(frame_pt);
-          bool inserted = st_insert_share_entry(entry->file, entry->upage, ft_entry);
+          bool inserted = st_insert_share_entry(ft_entry->file_name, entry->upage, ft_entry);
           printf("at %p ", entry->upage);
           printf(inserted? "new sharing entry inserted successfully\n" : "new sharing entry inserted UNsuccessfully\n");
           ASSERT(inserted);

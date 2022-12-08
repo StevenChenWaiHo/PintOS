@@ -14,6 +14,25 @@ struct lock st_lock;
 static bool st_entry_comp(const struct hash_elem *, const struct hash_elem *, void * UNUSED);
 static unsigned int st_entry_hash(const struct hash_elem *, void * UNUSED);
 
+
+void
+st_printf(void) {
+    printf("st_printf: thread tid: %d\n", thread_current()->tid);
+    struct hash_iterator i;
+    hash_first (&i, &st);
+    while (hash_next (&i))
+    {
+        struct st_entry *ste = hash_entry (hash_cur (&i), struct st_entry, st_elem);
+        struct list_elem *e = list_front (&ste->upages);
+        while (e != list_end (&ste->upages))
+        {
+            struct share_frame_info *info = list_entry(e, struct share_frame_info , page_elem);
+            printf("st_printf: upage: %p of file: %s\n", info->upage, ste->file_name);
+            e = list_next(e);
+        }  
+    }
+}
+
 void
 st_init(void)
 {
@@ -44,16 +63,16 @@ st_free_share_entry(struct st_entry *entry)
 }
 
 struct st_entry *
-st_find_share_entry(struct file *file)
+st_find_share_entry(char *file_name)
 {
     struct st_entry dummy;
-    dummy.file = file;
+    dummy.file_name = file_name;
      struct hash_elem *e = hash_find(&st, &dummy.st_elem);
     if (e == NULL)
     {
         return NULL;
     }
-    printf("########st_find_share_entry: found file at %p\n", file);
+    printf("########st_find_share_entry: found file %s\n", file_name);
     return hash_entry(e, struct st_entry, st_elem);
 }
 
@@ -62,10 +81,10 @@ st_find_share_entry(struct file *file)
  * Returns NULL if no frame allocated at UPAGE
 */
 struct ft_entry *
-st_find_frame_for_upage (void *upage, struct file *file)
+st_find_frame_for_upage (void *upage, char *file_name)
 {
-    printf("st_find_frame_for_upage: finding upage: %p. file: %p\n", upage, file);
-    struct st_entry *entry = st_find_share_entry (file);
+    printf("st_find_frame_for_upage: finding upage: %p. file: %s\n", upage, file_name);
+    struct st_entry *entry = st_find_share_entry (file_name);
     if (!entry)
     {
         return NULL;
@@ -84,7 +103,7 @@ st_find_frame_for_upage (void *upage, struct file *file)
 
 /*Insert share entry for FILE and update owners with new owner UPAGE at FRAME fte.*/
 bool
-st_insert_share_entry(struct file *file, void *upage, struct ft_entry *fte)
+st_insert_share_entry(char *file_name, void *upage, struct ft_entry *fte)
 {
     struct share_frame_info *info = (struct share_frame_info *)malloc(sizeof(struct share_frame_info));
     if (!info)
@@ -96,17 +115,17 @@ st_insert_share_entry(struct file *file, void *upage, struct ft_entry *fte)
     info->frame = fte;
     info->upage = upage;
 
-    struct st_entry *e = st_find_share_entry (file);
+    struct st_entry *e = st_find_share_entry (file_name);
     if (e == NULL)
     {
-        printf("***st_insert_share_entry: new file %p\n", file);
+        printf("***st_insert_share_entry: new file %s\n", file_name);
         e = (struct st_entry *)malloc(sizeof(struct st_entry));
         if (!e)
         {
             printf("Cannot alloc share_frame_info for st_entry!\n");
             return false; 
         }
-        e->file = file;
+        e->file_name = file_name;
         list_init(&e->upages);
         
         hash_insert(&st, &e->st_elem);
@@ -119,9 +138,9 @@ st_insert_share_entry(struct file *file, void *upage, struct ft_entry *fte)
 
 /*remove and free file entry for FILE. Returns true if FILE is removed */
 bool
-st_free_entry (struct file *file)
+st_free_entry (char *file_name)
 {
-    struct st_entry *entry = st_find_share_entry(file);
+    struct st_entry *entry = st_find_share_entry(file_name);
     if (entry)
     {
         struct list_elem *e = list_front (&entry->upages);
@@ -142,15 +161,15 @@ static unsigned int
 st_entry_hash(const struct hash_elem *a, void *aux UNUSED)
 {
     const struct st_entry *e = hash_entry (a, struct st_entry, st_elem);
-    return hash_bytes(e->file, sizeof(e->file));
+    return hash_bytes(e->file_name, sizeof(e->file_name));
 }
 
 /* Share table less than function */
 static bool
 st_entry_comp(const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED)
 {
-    struct file *file_a = hash_entry (a, struct st_entry, st_elem)->file;
-    struct file *file_b = hash_entry (b, struct st_entry, st_elem)->file;
+    char *file_a = hash_entry (a, struct st_entry, st_elem)->file_name;
+    char *file_b = hash_entry (b, struct st_entry, st_elem)->file_name;
 
     return file_a < file_b;
 }

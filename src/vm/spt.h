@@ -36,7 +36,7 @@ struct spt_entry *spt_lookup (void *);
 bool spt_remove (void *);
 void spt_destroy (void);
 
-bool lazy_load (struct file *, off_t, uint8_t *,
+bool lazy_load (struct file *, char *, off_t, uint8_t *,
   uint32_t, uint32_t, bool, enum page_location);
 bool spt_pf_handler (void *, bool, bool, bool, void *);
 

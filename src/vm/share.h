@@ -6,9 +6,9 @@
 
 struct st_entry
 {
-    struct file *file;          /*file pointer*/
-    struct list upages;         /*pages file is loaded into*/
-    struct hash_elem st_elem;   /*hash elem for share entry in page table*/
+    char *file_name;              /*file pointer*/
+    struct list upages;           /*pages file is loaded into*/
+    struct hash_elem st_elem;     /*hash elem for share entry in page table*/
 };
 
 struct share_frame_info
@@ -19,13 +19,14 @@ struct share_frame_info
 };
 
 void st_init(void);
+void st_printf(void);
 struct hash *get_st(void);
 void st_access_lock(void);
 void st_access_unlock(void);
 void st_free_share_entry(struct st_entry*);
-struct st_entry *st_find_share_entry(struct file *file);
-struct ft_entry *st_find_frame_for_upage (void *, struct file *);
-bool st_insert_share_entry(struct file *, void *, struct ft_entry *);
-bool st_free_entry (struct file *);
+struct st_entry *st_find_share_entry(char *);
+struct ft_entry *st_find_frame_for_upage (void *, char *);
+bool st_insert_share_entry(char *, void *, struct ft_entry *);
+bool st_free_entry (char *);
 
 #endif /* vm/share.h */
