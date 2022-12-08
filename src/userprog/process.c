@@ -375,6 +375,9 @@ process_exit (void)
       mm_destroy (mm_pair);
     }
   }
+
+  /* Freeing ft entries, removing second chance candidates in the process. */
+  ft_free (thread_current ());
   
   /* Freeing SPT elements, removing entries in the swap disk. */
   spt_destroy ();
@@ -600,7 +603,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
           break;
         }
     }
-
+  filesys_unlock ();
   /* Set up stack. */
   if (!setup_stack (esp))
     goto done;
@@ -613,7 +616,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  filesys_unlock ();
+  filesys_try_unlock ();
   return success;
 }
 

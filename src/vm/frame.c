@@ -19,10 +19,10 @@ struct lock ft_lock;
 
 static bool ft_entry_comp(const struct hash_elem *, const struct hash_elem *, void *UNUSED);
 static unsigned int ft_entry_hash(const struct hash_elem *, void *UNUSED);
-void swap_page(void *upage, struct spt_entry *entry);
-void evict_filesys(void *upage, struct spt_entry *entry);
-void evict_mmap(void *upage, struct spt_entry *entry);
-void evict_stack(void *upage, struct spt_entry *entry);
+void swap_page(void *upage, struct spt_entry *entry, uint32_t *pd);
+void evict_filesys(void *upage, struct spt_entry *entry, uint32_t *pd);
+void evict_mmap(struct spt_entry *entry, uint32_t *pd);
+void evict_stack(void *upage, struct spt_entry *entry, uint32_t *pd);
 
 void ft_init(void)
 {
@@ -49,7 +49,7 @@ void ft_access_unlock(void)
 }
 
 /* Handler for swapping page to swap disk. */
-void swap_page(void *upage, struct spt_entry *entry)
+void swap_page(void *kpage, struct spt_entry *entry, uint32_t *pd)
 {
   // if (upage == 0x80e1000 || upage == 0x80e0000) {
   //   hex_dump (upage, upage, 8, false);
@@ -57,39 +57,42 @@ void swap_page(void *upage, struct spt_entry *entry)
   // }
   //hex_dump (upage, upage, 8, false);
   //printf("Swapping out page at %p, w? %d\n", upage, entry->writable);
-  entry->swap_slot = swap_out(upage);
+  entry->swap_slot = swap_out(kpage);
   if (entry->swap_slot == -1) {
     //Swap failed as swap disk is full
     exit_handler (ERROR);
   }
   entry->swapped = true;
   //printf("Swapping out page at %p, w? %d\n", upage, entry->writable);
-  pagedir_clear_page(thread_current ()->pagedir, upage);
+  pagedir_clear_page(pd, entry->upage);
 }
 
 /* Function for eviction a filesys page. */
-void evict_filesys(void *upage, struct spt_entry *entry)
+void evict_filesys(void *kpage, struct spt_entry *entry, uint32_t *pd)
 {
-  if (entry->writable)
+  if (entry->writable
+    && pagedir_is_dirty (pd, entry->upage))
   {
-    swap_page(upage, entry);
+    swap_page(kpage, entry, pd);
   }
   else
   {
-    pagedir_clear_page(thread_current ()->pagedir, upage);
+    pagedir_clear_page(pd, entry->upage);
   }
 }
 
 /* Function for eviction a mmap page. */
-void evict_mmap(void *upage, struct spt_entry *entry)
+void evict_mmap(struct spt_entry *entry, uint32_t *pd)
 {
-  mm_file_write(entry->file, entry->rbytes, upage, entry->ofs);
+  filesys_lock ();
+  mm_file_write(entry->file, entry->rbytes, entry->upage, entry->ofs, pd);
+  filesys_unlock ();
 }
 
 /* Function for eviction a stack page. */
-void evict_stack(void *upage, struct spt_entry *entry)
+void evict_stack(void *kpage, struct spt_entry *entry, uint32_t *pd)
 {
-  swap_page(upage, entry);
+  swap_page(kpage, entry, pd);
 }
 
 /**
@@ -116,12 +119,12 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
         //printf("This page is not pinned\n");
         //void *cur_upage = list_entry(list_front(&cur_ft->owners), struct owner, owner_elem)->upage;
         void *cur_upage = cur_ft->upage;
-        struct spt_entry *cur_spt = spt_lookup(cur_upage);
+        struct spt_entry *cur_spt = spt_thread_lookup(cur_upage, cur_ft->t);
         //printf("%p", cur_upage);
-        if (pagedir_is_accessed(thread_current()->pagedir, cur_upage))
+        if (pagedir_is_accessed(cur_ft->t->pagedir, cur_upage))
         {
           //printf("Accessed bit of this page is set\n");
-          pagedir_set_accessed(thread_current()->pagedir, cur_upage, false);
+          pagedir_set_accessed(cur_ft->t->pagedir, cur_upage, false);
         }
         else
         {
@@ -130,17 +133,17 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
           {
           case FILE_SYS:
             //printf("Evicting filesys page.\n");
-            evict_filesys(cur_upage, cur_spt);
+            evict_filesys(cur_ft->kernel_page, cur_spt, cur_ft->t->pagedir);
             break;
 
           case MMAP:
             //printf("Evicting mmap page.\n");
-            evict_mmap(cur_upage, cur_spt);
+            evict_mmap(cur_spt, cur_ft->t->pagedir);
             break;
 
           case STACK:
             //printf("Evicting stack page.\n");
-            evict_stack(cur_upage, cur_spt);
+            evict_stack(cur_ft->kernel_page, cur_spt, cur_ft->t->pagedir);
             break;
 
           default:
@@ -156,7 +159,7 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
       cur_ft = list_entry (list_pop_front (&snd_chance), struct ft_entry, ele_elem);
     }
     palloc_free_page (cur_ft->kernel_page);
-    kernel_page = palloc_get_page (PAL_USER);
+    kernel_page = palloc_get_page (flag);
     ASSERT (kernel_page);
     //printf("eviction success\n");
   }
@@ -171,6 +174,7 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
   entry->upage = user_page;
   entry->file = file;
   entry->pinned = false;
+  entry->t = thread_current ();
   /*
   list_init(&entry->owners);
   struct owner *owner = (struct owner *)malloc(sizeof(struct owner));
@@ -227,6 +231,21 @@ ft_search_frame_with_page(void *upage)
     }
   }
   return NULL;
+}
+
+void
+ft_free (struct thread *t) {
+  if (!list_empty (&snd_chance)) {
+    struct list_elem *e = list_front (&snd_chance);
+    while (e != list_end (&snd_chance)) {
+      struct ft_entry *snd_entry = list_entry (e, struct ft_entry, ele_elem);
+      e = list_next (e);
+      if (snd_entry->t = t) {
+        list_remove (&snd_entry->ele_elem);
+      }
+      //free(snd_entry);
+    }
+  }
 }
 
 /*remove and free frame for KPAGE*/

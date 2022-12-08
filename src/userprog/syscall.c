@@ -75,6 +75,13 @@ void filesys_unlock (void)
   lock_release(&file_l);
 }
 
+void filesys_try_unlock (void)
+{
+  if (lock_held_by_current_thread (&file_l)) {
+    filesys_unlock ();
+  }
+}
+
 /* Initialization of system calls (called in init.c),
    Global lock is initialized here. */
 void
@@ -417,16 +424,17 @@ mmap (uint32_t *args, uint32_t *eax) {
   *eax = ERROR;
 }
 
-void mm_file_write(struct file *file, int size, void *upage, off_t ofs) 
+void mm_file_write(struct file *file, int size, void *upage, off_t ofs, uint32_t *pd) 
 {
-  if (pagedir_is_dirty (thread_current ()->pagedir, upage)) {
+  ASSERT (pagedir_get_page (pd, upage));
+  if (pagedir_is_dirty (pd, upage)) {
       if (size < PGSIZE) {
         file_write_at (file, upage, size, ofs);
       } else {
         file_write_at (file, upage, PGSIZE, ofs);        
       }
     }
-    pagedir_clear_page (thread_current ()->pagedir, upage);
+    pagedir_clear_page (pd, upage);
 }
 
 /* Helper function to destroy MMAP pair when closing a file. */
@@ -439,10 +447,10 @@ mm_destroy (struct file_record *e) {
   /* Iterating through all pages, checking dirty state and writing any dirty ones
     if this is the last page and is not full, trims the current upage content.*/
   while (size > 0) {
-      mm_file_write(e->file_ref, size, upage, upage - e->mapping_addr);
-      spt_remove(upage);
-      upage += PGSIZE;
-      size -= PGSIZE;
+    mm_file_write(e->file_ref, size, upage, upage - e->mapping_addr, thread_current ()->pagedir);
+    spt_remove(upage);
+    upage += PGSIZE;
+    size -= PGSIZE;
   }
   file_close(e->file_ref);
   filesys_unlock();

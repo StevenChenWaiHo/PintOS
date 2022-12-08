@@ -34,6 +34,7 @@ struct spt_entry
 bool spt_init (struct thread *);
 bool spt_insert (struct spt_entry *);
 struct spt_entry *spt_lookup (void *);
+struct spt_entry *spt_thread_lookup (void *, struct thread *);
 bool spt_remove (void *);
 void spt_destroy (void);
 

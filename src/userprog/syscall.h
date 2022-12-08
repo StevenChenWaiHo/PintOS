@@ -12,10 +12,11 @@ typedef int mapid_t;
 
 void filesys_lock (void);
 void filesys_unlock (void);
+void filesys_try_unlock (void);
 void syscall_init (void);
 void exit_handler (int);
 
 void mm_destroy (struct file_record *);
-void mm_file_write(struct file *file, int size, void *upage, off_t ofs);
+void mm_file_write(struct file *file, int size, void *upage, off_t ofs, uint32_t *pd);
 
 #endif /* userprog/syscall.h */

@@ -17,6 +17,8 @@
 #include "vm/frame.h"
 #include "vm/share.h"
 
+struct lock sptlock;
+
 unsigned spt_hash (const struct hash_elem *, void *);
 bool spt_less (const struct hash_elem *, 
                       const struct hash_elem *,
@@ -29,7 +31,18 @@ static bool read_segment_from_file (struct spt_entry *, void *);
 
 bool
 spt_init (struct thread *t) {
+  lock_init (&sptlock);
   return hash_init (&t->spt, spt_hash, spt_less, NULL);
+}
+
+void
+spt_lock () {
+  lock_acquire (&sptlock);
+}
+
+void
+spt_unlock () {
+  lock_release (&sptlock);
 }
 
 bool
@@ -50,10 +63,15 @@ spt_insert (struct spt_entry *entry) {
   return NULL if not found. */
 struct spt_entry *
 spt_lookup (void *upage) {
+  return spt_thread_lookup (upage, thread_current ());
+}
+
+struct spt_entry *
+spt_thread_lookup (void *upage, struct thread *t) {
   struct spt_entry dummy;
   dummy.upage = pg_round_down (upage);
   struct hash_elem *e;
-  e = hash_find (cur_spt(), &dummy.spt_elem);
+  e = hash_find (&t->spt, &dummy.spt_elem);
   return e == NULL ? NULL : hash_entry (e, struct spt_entry, spt_elem);
 }
 
@@ -185,6 +203,7 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
     if (fault_addr == NULL || is_kernel_vaddr (fault_addr)
       || is_below_ustack (fault_addr) || esp - fault_addr > STACK_OFS
       || (PHYS_BASE - (int) fault_page) > STACK_MAX) { 
+        //printf("Tid : %d, fault_addr = %p", thread_current ()->tid, fault_addr);
       return false;
     }
     return grow_stack (fault_page);
@@ -202,12 +221,12 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
       if (entry->swapped) {
         //Takes information in swap disk thru swap_in
         swap_in(frame_pt, entry->swap_slot);
-        pagedir_set_dirty(thread_current()->pagedir, fault_page, true);
         entry->swapped = false;
         //printf("Swapping in page at %p, w? %d\n", fault_page, entry->writable);
         if (!install_page (fault_page, frame_pt, entry->writable)) {
           return false;
         }
+        pagedir_set_dirty(thread_current()->pagedir, fault_page, true);
       } else if (entry->location == FILE_SYS || entry->location == MMAP) {
         // Lazy loading..
         /* Either zero-out page,
