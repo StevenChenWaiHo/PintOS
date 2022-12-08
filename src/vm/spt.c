@@ -72,6 +72,9 @@ static void
 spt_destroy_single (struct hash_elem *e, void *aux UNUSED) {
   struct spt_entry *entry = hash_entry (e, struct spt_entry, spt_elem);
   /* Free any swap space stuff here... */
+  if (entry->swapped){
+    swap_drop(entry->swap_slot);
+  }
   free (entry);
 }
 
