@@ -145,6 +145,7 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
 
           default:
             //printf("Evicting unknown page.\n");
+            ft_access_unlock();
             PANIC("Page stored in unknown location");
             break;
           }
@@ -163,6 +164,7 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
   if (!entry)
   {
     printf("Cannot alloc frame table entry!\n");
+    ft_access_unlock();
     return NULL;
   }
   entry->kernel_page = kernel_page;
