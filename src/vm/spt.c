@@ -91,12 +91,12 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
           uint32_t read_bytes, uint32_t zero_bytes, bool writable,
           enum page_location location) {
   /*
-  if (location == MMAP) {
+  //if (location == MMAP) {
     printf("loading ");
     printf(writable? "w " : "n/w ");
     printf("segment at ofs %d to upage %p,\n", ofs, upage);
     printf("reading in %d and zeroing %d bytes...\n\n", read_bytes, zero_bytes);
-  }
+  //}
   */
   while (read_bytes > 0 || zero_bytes > 0) 
   {
@@ -203,6 +203,7 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
         //Takes information in swap disk thru swap_in
         swap_in(frame_pt, entry->swap_slot);
         entry->swapped = false;
+        printf("Swapping in page at %p, w? %d\n", fault_page, entry->writable);
         if (!install_page (fault_page, frame_pt, entry->writable)) {
           return false;
         }
@@ -211,6 +212,7 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
         /* Either zero-out page,
           or fetch the data into the frame from the file,
           then point PTE to the frame. */
+        printf("Loading in page at %p, w? %d\n", fault_page, entry->writable);
         if (entry->zbytes == PGSIZE) {
           zero_from (frame_pt, PGSIZE);
         } else if (!read_segment_from_file (entry, frame_pt)) {

@@ -51,6 +51,11 @@ void ft_access_unlock(void)
 /* Handler for swapping page to swap disk. */
 void swap_page(void *upage, struct spt_entry *entry)
 {
+  if (upage == 0x80e1000 || upage == 0x80e0000) {
+    hex_dump (upage, upage, 8, false);
+    printf("Dirty? %d\n", pagedir_is_dirty (thread_current ()->pagedir, upage));
+  }
+  printf("Swapping out page at %p, w? %d\n", upage, entry->writable);
   entry->swap_slot = swap_out(upage);
   if (entry->swap_slot == -1) {
     //Swap failed as swap disk is full
@@ -94,13 +99,13 @@ void evict_stack(void *upage, struct spt_entry *entry)
 void *
 get_frame(enum palloc_flags flag, void *user_page, struct file *file)
 {
+  ft_access_lock();
   void *kernel_page = palloc_get_page(flag);
 
   if (kernel_page == NULL)
   {
     //printf("No free frames available for allocation!\n");
     /*TODO: evict a frame and replace with new page allocation*/
-    bool print = false;
     struct ft_entry *cur_ft = list_entry(list_pop_front(&snd_chance), struct ft_entry, ele_elem);
     ASSERT(cur_ft);
     while (true)
@@ -151,7 +156,6 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
     palloc_free_page (cur_ft->kernel_page);
     kernel_page = palloc_get_page (PAL_USER);
     ASSERT (kernel_page);
-    print = false;
     //printf("eviction success\n");
   }
   struct ft_entry *entry = (struct ft_entry *)malloc(sizeof(struct ft_entry));
@@ -177,9 +181,10 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
   list_push_back(&entry->owners, &owner->owner_elem);
   */
   list_push_back(&snd_chance, &entry->ele_elem);
-  ft_access_lock();
+  
   hash_insert(&ft, &entry->ft_elem);
   ft_access_unlock();
+  //printf("Frame of vmaddr: %p allocated\n", user_page);
   return kernel_page;
 }
 
