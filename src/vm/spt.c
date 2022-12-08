@@ -34,6 +34,8 @@ spt_init (struct thread *t) {
 
 bool
 spt_insert (struct spt_entry *entry) {
+  entry->swapped = false;
+  entry->swap_slot = 0;
   entry->upage = pg_round_down (entry->upage);
   struct hash_elem *e = hash_replace (cur_spt(), &entry->spt_elem);
   if (e) {
@@ -105,7 +107,7 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
       * if frame exists:
       *   i. insert into share table the PAGE of FILE
       *   ii. copy KPAGE of the shared frame to KPAGE of PAGEDIR of thread_current()
-      */
+      
 
       if (!writable)
       {
@@ -121,6 +123,7 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
           //printf("share table no such frame\n");
         }
       }
+      */
       /* *********** SHARING DONE *********** */
 
     /* Calculate how to fill this page.
@@ -145,7 +148,6 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
       entry->zbytes = page_zero_bytes;
       entry->upage = upage;
       entry->writable = writable;
-      entry->swapped = false;
       spt_insert (entry);
     } else {
       // Previous entry present, update SPT meta-data (load_segment).
@@ -226,7 +228,7 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
         
         /** SHARING: 
          * If new frame is read-only, add entry to share table
-        */
+        
         if (!entry->writable)
         {
           // printf("spt_pf_handler:: ofs: %d, file: %p, upage %p\n", entry->ofs, entry->file, entry->upage);
@@ -236,6 +238,7 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
           // printf(inserted? "new sharing entry inserted successfully\n" : "new sharing entry inserted UNsuccessfully\n");
           ASSERT(inserted);
         }
+        */
         /* *********** SHARING DONE *********** */
       }
     }
@@ -250,7 +253,6 @@ grow_stack(void *upage) {
   entry->upage = upage;
   entry->location = STACK;
   entry->writable = true;
-  entry->swapped = false;
   spt_insert (entry);
   void* kpage = get_frame (PAL_USER | PAL_ZERO, upage, NULL);
   if (kpage != NULL && !install_page(upage, kpage, true))

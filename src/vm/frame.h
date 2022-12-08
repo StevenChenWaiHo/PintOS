@@ -7,6 +7,7 @@
 struct ft_entry
 {
     void *kernel_page;              /*page allocated in kernel virtual memory*/
+    void *upage;
     struct file *file;              /*name of the file this frame is storing*/
     struct list owners;             /*processes that owns the frame*/
     bool pinned;                    /* Boolean for pinned frame*/

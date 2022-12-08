@@ -52,6 +52,10 @@ void ft_access_unlock(void)
 void swap_page(void *upage, struct spt_entry *entry)
 {
   entry->swap_slot = swap_out(upage);
+  if (entry->swap_slot == -1) {
+    //Swap failed as swap disk is full
+    exit_handler (ERROR);
+  }
   entry->swapped = true;
   //printf("Swapping out page at %p, w? %d\n", upage, entry->writable);
   pagedir_clear_page(thread_current ()->pagedir, upage);
@@ -104,7 +108,8 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
       if (!cur_ft->pinned)
       {
         //printf("This page is not pinned\n");
-        void *cur_upage = list_entry(list_front(&cur_ft->owners), struct owner, owner_elem)->upage;
+        //void *cur_upage = list_entry(list_front(&cur_ft->owners), struct owner, owner_elem)->upage;
+        void *cur_upage = cur_ft->upage;
         struct spt_entry *cur_spt = spt_lookup(cur_upage);
         //printf("%p", cur_upage);
         if (pagedir_is_accessed(thread_current()->pagedir, cur_upage))
@@ -156,8 +161,10 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
     return NULL;
   }
   entry->kernel_page = kernel_page;
+  entry->upage = user_page;
   entry->file = file;
   entry->pinned = false;
+  /*
   list_init(&entry->owners);
   struct owner *owner = (struct owner *)malloc(sizeof(struct owner));
   if (!owner)
@@ -168,6 +175,7 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
   owner->process = thread_current();
   owner->upage = user_page;
   list_push_back(&entry->owners, &owner->owner_elem);
+  */
   list_push_back(&snd_chance, &entry->ele_elem);
   ft_access_lock();
   hash_insert(&ft, &entry->ft_elem);

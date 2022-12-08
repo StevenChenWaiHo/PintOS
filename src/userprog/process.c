@@ -708,7 +708,6 @@ setup_stack (void **esp)
         entry->upage = upage;
         entry->location = STACK;
         entry->writable = true;
-        entry->swapped = false;
         spt_insert (entry);
         *esp = PHYS_BASE;
       }

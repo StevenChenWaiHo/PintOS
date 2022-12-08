@@ -78,5 +78,7 @@ swap_in (void *vaddr, size_t slot)
 void
 swap_drop (size_t slot)
 {
+  lock_acquire (&swap_lock);
   bitmap_reset (swap_bitmap, slot);
+  lock_release (&swap_lock);
 }
