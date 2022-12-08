@@ -7,6 +7,7 @@
 struct ft_entry
 {
     void *kernel_page;              /*page allocated in kernel virtual memory*/
+    void * user_page;               /*page allocated in user virtual memory*/
     struct file *file;              /*name of the file this frame is storing*/
     struct list owners;             /*processes that owns the frame*/
     struct list_elem ele_elem;      /*list elem for eviction round robin list*/
@@ -16,7 +17,6 @@ struct ft_entry
 struct owner
 {
     struct thread *process;
-    void * upage;
     struct list_elem owner_elem;
 };
 

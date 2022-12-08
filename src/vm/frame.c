@@ -44,7 +44,7 @@ ft_access_lock(void)
  * TODO: eviction and replace* 
 */
 void *
-get_frame(enum palloc_flags flag, void *user_page, struct file *file)
+get_frame(enum palloc_flags flag, void *upage, struct file *file)
 {
     void *kernel_page = palloc_get_page(flag);
 
@@ -61,6 +61,7 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
         return NULL;
     }
     entry->kernel_page = kernel_page;
+    entry->user_page = upage;
     entry->file = file;
     list_init(&entry->owners);
     struct owner *owner = (struct owner *) malloc(sizeof(struct owner));
@@ -69,8 +70,7 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
         printf("Cannot alloc frame page owner!\n");
         return NULL; 
     }
-    owner->process = thread_current();
-    owner->upage = user_page;
+    owner->process = thread_current();    
     list_push_back(&entry->owners, &owner->owner_elem);
     hash_insert(&ft, &entry->ft_elem);
     return kernel_page;    
@@ -101,15 +101,10 @@ ft_search_frame_with_page(void *upage)
     while (hash_next (&i))
     {
         struct ft_entry *f = hash_entry (hash_cur (&i), struct ft_entry, ft_elem);
-        struct list_elem *e = list_front (&f->owners);
-        while (e != list_end (&f->owners))
+        if (upage == f->user_page)
         {
-            struct owner *owner = list_entry(e, struct owner, owner_elem);
-            if (owner->upage == upage)
-            {
-              return f;                  
-            }
-        }  
+            return f;                  
+        }
     }
     return NULL;
 }
@@ -123,7 +118,7 @@ ft_search_frame_with_owner(struct thread *t)
     while (hash_next (&i))
     {
         struct ft_entry *f = hash_entry (hash_cur (&i), struct ft_entry, ft_elem);
-        struct list_elem *e = list_front (&f->owners);
+        struct list_elem *e = list_begin (&f->owners);
         while (e != list_end (&f->owners))
         {
             struct owner *owner = list_entry(e, struct owner, owner_elem);
@@ -131,6 +126,7 @@ ft_search_frame_with_owner(struct thread *t)
             {
               return f;                  
             }
+            e = list_next(e);
         }  
     }
     return NULL;
@@ -141,9 +137,18 @@ void
 free_frame(void *kpage)
 {
     struct ft_entry *entry = ft_search_entry(kpage);
-    hash_delete(&ft, &entry->ft_elem);
-    palloc_free_page(entry->kernel_page);
+    if (entry) {
+        hash_delete(&ft, &entry->ft_elem);
+        palloc_free_page(entry->kernel_page);
+        struct list_elem *e = list_begin (&entry->owners);
+        while (e != list_end (&entry->owners)) {
+            struct owner *owner = list_entry(e, struct owner, owner_elem);
+            free(owner);
+        }
+        e = list_next(e);
+        }
     free(entry);
+
 }
 
 void

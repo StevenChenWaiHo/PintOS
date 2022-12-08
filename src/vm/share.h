@@ -18,6 +18,7 @@ struct share_frame_info
     struct list_elem page_elem; /* list elem for list upages in an st_entry */
 };
 
+void st_printf(void);
 void st_init(void);
 struct hash *get_st(void);
 void st_access_lock(void);

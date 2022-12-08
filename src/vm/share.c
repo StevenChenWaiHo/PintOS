@@ -7,12 +7,43 @@
 #include "vm/frame.h"
 #include "threads/thread.h"
 #include "threads/synch.h"
+#include "filesys/file.h"
 
 struct hash st;
 struct lock st_lock;
 
 static bool st_entry_comp(const struct hash_elem *, const struct hash_elem *, void * UNUSED);
 static unsigned int st_entry_hash(const struct hash_elem *, void * UNUSED);
+
+void
+st_printf(void) {
+    printf("st_printf: thread tid: %d\n", thread_current()->tid);
+    struct hash_iterator i;
+    hash_first (&i, &st);
+    while (hash_next (&i))
+    {
+        struct st_entry *ste = hash_entry (hash_cur (&i), struct st_entry, st_elem);
+        struct list_elem *e = list_begin (&ste->upages);
+        printf("------------- file: %u\n", file_hash (ste->file));
+        while (e != list_end (&ste->upages))
+        {
+            struct share_frame_info *info = list_entry(e, struct share_frame_info , page_elem);
+            struct ft_entry *fte = ft_search_frame_with_page(info->upage);
+            if (fte){
+                struct list_elem *o = list_begin (&fte->owners);
+                while (o != list_end (&fte->owners)) {
+                    struct thread *t = list_entry(o, struct owner, owner_elem)->process;
+                    printf("st_printf: upage: %p of file: %u, owner tid: %d\n", info->upage, file_hash (ste->file), t->tid);
+                    o = list_next(o);   
+                }
+            }else 
+            {
+                printf("--- no frame ---");
+            }
+            e = list_next(e);
+        }  
+    }
+}
 
 void
 st_init(void)
@@ -46,6 +77,7 @@ st_free_share_entry(struct st_entry *entry)
 struct st_entry *
 st_find_share_entry(struct file *file)
 {
+    st_printf();
     struct st_entry dummy;
     dummy.file = file;
      struct hash_elem *e = hash_find(&st, &dummy.st_elem);
@@ -53,7 +85,7 @@ st_find_share_entry(struct file *file)
     {
         return NULL;
     }
-    printf("########st_find_share_entry: found file at %p\n", file);
+    printf("########st_find_share_entry: found file at %u\n", file_hash(file));
     return hash_entry(e, struct st_entry, st_elem);
 }
 
@@ -64,21 +96,23 @@ st_find_share_entry(struct file *file)
 struct ft_entry *
 st_find_frame_for_upage (void *upage, struct file *file)
 {
-    printf("st_find_frame_for_upage: finding upage: %p. file: %p\n", upage, file);
+    printf("st_find_frame_for_upage: finding upage: %p. file: %u\n", upage, file_hash(file));
     struct st_entry *entry = st_find_share_entry (file);
     if (!entry)
     {
         return NULL;
     }
     struct ft_entry * fte = NULL;
-    struct list_elem *e = list_front (&entry->upages);
+    struct list_elem *e = list_begin (&entry->upages);
     while (e != list_end (&entry->upages))
     {
         struct share_frame_info *info = list_entry(e, struct share_frame_info, page_elem);
         if (info->upage == upage) {
             fte = info->frame;
         }
+        e = list_next(e);
     }
+    printf(fte? "st_find_frame_for_upage: frame exists\n" : "st_find_frame_for_upage: no frame\n");
     return fte;  
 }
 
@@ -99,7 +133,7 @@ st_insert_share_entry(struct file *file, void *upage, struct ft_entry *fte)
     struct st_entry *e = st_find_share_entry (file);
     if (e == NULL)
     {
-        printf("***st_insert_share_entry: new file %p\n", file);
+        printf("***st_insert_share_entry: new file %u\n", file_hash (file));
         e = (struct st_entry *)malloc(sizeof(struct st_entry));
         if (!e)
         {
@@ -124,11 +158,12 @@ st_free_entry (struct file *file)
     struct st_entry *entry = st_find_share_entry(file);
     if (entry)
     {
-        struct list_elem *e = list_front (&entry->upages);
+        struct list_elem *e = list_begin (&entry->upages);
         while (e != list_end (&entry->upages))
         {
             struct share_frame_info *info = list_entry(e, struct share_frame_info, page_elem);
             free(info);
+            e = list_next(e);
         }
         hash_delete(&st, &entry->st_elem);
         free(entry);
@@ -141,8 +176,8 @@ st_free_entry (struct file *file)
 static unsigned int
 st_entry_hash(const struct hash_elem *a, void *aux UNUSED)
 {
-    const struct st_entry *e = hash_entry (a, struct st_entry, st_elem);
-    return hash_bytes(e->file, sizeof(e->file));
+    const struct file *file = hash_entry (a, struct st_entry, st_elem)->file;
+    return file_hash(file);
 }
 
 /* Share table less than function */
@@ -152,5 +187,5 @@ st_entry_comp(const struct hash_elem *a, const struct hash_elem *b, void *aux UN
     struct file *file_a = hash_entry (a, struct st_entry, st_elem)->file;
     struct file *file_b = hash_entry (b, struct st_entry, st_elem)->file;
 
-    return file_a < file_b;
+    return file_get_inode(file_a) < file_get_inode(file_b);
 }
