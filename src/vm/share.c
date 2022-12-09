@@ -30,7 +30,7 @@ st_printf(void) {
             struct share_frame_info *info = list_entry(e, struct share_frame_info , page_elem);
             printf("st_printf: upage: %p of file: %u\n", info->upage, file_hash (ste->file));
 
-            struct ft_entry *fte = ft_search_frame_with_page(info->upage);
+            struct ft_entry *fte = ft_search_entry(info->upage);
             if (fte){
                 struct list_elem *o = list_begin (&fte->owners);
                 while (o != list_end (&fte->owners)) {
@@ -111,6 +111,7 @@ st_find_frame_for_upage (void *upage, struct file *file)
         struct share_frame_info *info = list_entry(e, struct share_frame_info, page_elem);
         if (info->upage == upage) {
             fte = info->frame;
+            break;
         }
         e = list_next(e);
     }
@@ -118,7 +119,7 @@ st_find_frame_for_upage (void *upage, struct file *file)
     return fte;  
 }
 
-/*Insert share entry for FILE and update owners with new owner UPAGE at FRAME fte.*/
+/*Insert share entry for FILE of  UPAGE at FRAME fte.*/
 bool
 st_insert_share_entry(struct file *file, void *upage, struct ft_entry *fte)
 {
@@ -145,7 +146,7 @@ st_insert_share_entry(struct file *file, void *upage, struct ft_entry *fte)
         e->file = file;
         list_init(&e->upages);
         
-        hash_insert(&st, &e->st_elem);
+        hash_replace(&st, &e->st_elem);
         printf("new share table entry created succesfully\n");
     }
     
@@ -160,12 +161,11 @@ st_free_entry (struct file *file)
     struct st_entry *entry = st_find_share_entry(file);
     if (entry)
     {
-        struct list_elem *e = list_begin (&entry->upages);
-        while (e != list_end (&entry->upages))
+        while (!list_empty (&entry->upages))
         {
+            struct list_elem *e = list_pop_front (&entry->upages);
             struct share_frame_info *info = list_entry(e, struct share_frame_info, page_elem);
             free(info);
-            e = list_next(e);
         }
         hash_delete(&st, &entry->st_elem);
         free(entry);

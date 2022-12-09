@@ -78,10 +78,10 @@ get_frame(enum palloc_flags flag, void *upage, struct file *file)
 
 /*hash find finds the hash element based on an entry's KPAGE address*/
 struct ft_entry *
-ft_search_entry(void *kpage)
+ft_search_entry(void *upage)
 {
   struct ft_entry dummy;
-  dummy.kernel_page = kpage;
+  dummy.user_page = upage;
   struct hash_elem *e = hash_find(&ft, &dummy.ft_elem);
   if (!e)
   {
@@ -139,16 +139,14 @@ free_frame(void *kpage)
     struct ft_entry *entry = ft_search_entry(kpage);
     if (entry) {
         hash_delete(&ft, &entry->ft_elem);
-        // palloc_free_page(entry->kernel_page);
-        struct list_elem *e = list_begin (&entry->owners);
-        while (e != list_end (&entry->owners)) {
+        
+        while (!list_empty (&entry->owners)) {
+            struct list_elem *e = list_pop_front(&entry->owners);
             struct owner *owner = list_entry(e, struct owner, owner_elem);
             free(owner);
         }
-        e = list_next(e);
-        }
+    }
     free(entry);
-
 }
 
 void
@@ -159,8 +157,8 @@ ft_add_page_entry(struct ft_entry * entry) {
 static bool
 ft_entry_comp(const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED)
 {
-    void *a_address = hash_entry(a, struct ft_entry, ft_elem)->kernel_page;
-    void *b_address = hash_entry(b, struct ft_entry, ft_elem)->kernel_page;
+    void *a_address = hash_entry(a, struct ft_entry, ft_elem)->user_page;
+    void *b_address = hash_entry(b, struct ft_entry, ft_elem)->user_page;
     return a_address < b_address;
 }
 
@@ -169,5 +167,5 @@ static unsigned int
 ft_entry_hash(const struct hash_elem *a, void *aux UNUSED)
 {
     const struct ft_entry *e = hash_entry(a, struct ft_entry, ft_elem);
-    return hash_bytes(&e->kernel_page, sizeof(e->kernel_page));
+    return hash_bytes(&e->user_page, sizeof(e->user_page));
 }

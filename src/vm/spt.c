@@ -111,7 +111,7 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
         struct ft_entry *fte = st_find_frame_for_upage(upage, file);
         if (fte)
         {
-          //bool inserted = st_insert_share_entry(file, upage, fte);
+          printf("can find sharable frame!\n");
           bool success = install_page(upage, fte->kernel_page, writable);
           struct owner *owner = (struct owner *) malloc(sizeof(struct owner));
           if (!owner)
@@ -124,6 +124,8 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
           st_access_unlock();
           ft_access_unlock();
           return true;
+        }else {
+          printf("cannot find sharable frame!\n");
         }
         st_access_unlock();
         ft_access_unlock();
@@ -209,7 +211,7 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
         struct ft_entry *fte = st_find_frame_for_upage(entry->upage, entry->file);
         if (fte)
         {
-          //bool inserted = st_insert_share_entry(entry->file, entry->upage, fte);
+          printf("can find sharable frame!\n");
           bool success = install_page(entry->upage, fte->kernel_page, entry->writable);
           struct owner *owner = (struct owner *) malloc(sizeof(struct owner));
           if (!owner)
@@ -223,6 +225,8 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
           ft_access_unlock();
           st_access_unlock();
           return true;
+        }else {
+          printf("cannot find sharable frame!\n");
         }
         ft_access_unlock();
         st_access_unlock();
@@ -262,9 +266,10 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
         {
         ft_access_lock();
         st_access_lock();
-        struct ft_entry *ft_entry = ft_search_entry(frame_pt);
+        struct ft_entry *ft_entry = ft_search_entry(fault_page);
         bool inserted = st_insert_share_entry(entry->file, entry->upage, ft_entry);
         ASSERT(inserted);
+        printf("added to share table\n");
         ft_access_unlock();
         st_access_unlock();
         }

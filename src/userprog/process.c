@@ -427,7 +427,7 @@ process_exit (void)
     }
     if (fte) {
       printf("should call free frame here right?\n");
-      // free_frame(fte->kernel_page);
+      //free_frame(fte->kernel_page);
     }
     /* *********** SHARING DONE *********** */
   }
@@ -742,7 +742,7 @@ setup_stack (void **esp)
       if (success)
         *esp = PHYS_BASE;
       else
-        free_frame (kpage);
+        free_frame (upage);
     }
   return success;
 }
