@@ -111,7 +111,7 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
         struct ft_entry *fte = st_find_frame_for_upage(upage, file);
         if (fte)
         {
-          bool inserted = st_insert_share_entry(file, upage, fte);
+          //bool inserted = st_insert_share_entry(file, upage, fte);
           bool success = install_page(upage, fte->kernel_page, writable);
           struct owner *owner = (struct owner *) malloc(sizeof(struct owner));
           if (!owner)
@@ -121,11 +121,13 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
           }
           owner->process = thread_current();
           list_push_back(&(fte->owners), &owner->owner_elem);
+          st_access_unlock();
+          ft_access_unlock();
+          return true;
         }
         st_access_unlock();
         ft_access_unlock();
       }
-
       /* *********** SHARING DONE *********** */
 
     /* Calculate how to fill this page.
@@ -200,7 +202,6 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
     /** SHARING: 
      * If uaddr is in share table, install page from there
     */
-
    if (!entry->writable)
       {
         ft_access_lock();
@@ -208,7 +209,7 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
         struct ft_entry *fte = st_find_frame_for_upage(entry->upage, entry->file);
         if (fte)
         {
-          bool inserted = st_insert_share_entry(entry->file, entry->upage, fte);
+          //bool inserted = st_insert_share_entry(entry->file, entry->upage, fte);
           bool success = install_page(entry->upage, fte->kernel_page, entry->writable);
           struct owner *owner = (struct owner *) malloc(sizeof(struct owner));
           if (!owner)
@@ -219,11 +220,14 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
           owner->process = thread_current();
           list_push_back(&(fte->owners), &owner->owner_elem);
           printf("thread tid %d piggybacking on %p\n", thread_current()->tid, entry->upage);
+          ft_access_unlock();
+          st_access_unlock();
           return true;
         }
         ft_access_unlock();
         st_access_unlock();
       }
+      /* *********** SHARING DONE *********** */
 
     
     /* Allocate frame if frame not previously allocated. */
@@ -259,15 +263,13 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
         ft_access_lock();
         st_access_lock();
         struct ft_entry *ft_entry = ft_search_entry(frame_pt);
-          bool inserted = st_insert_share_entry(entry->file, entry->upage, ft_entry);
-          ASSERT(inserted);
-          ft_access_unlock();
-          st_access_unlock();
+        bool inserted = st_insert_share_entry(entry->file, entry->upage, ft_entry);
+        ASSERT(inserted);
+        ft_access_unlock();
+        st_access_unlock();
         }
-
         /* *********** SHARING DONE *********** */
-      }
-      if (entry->location == SWAP) {
+      } else if (entry->location == SWAP) {
         //Takes information in swap disk thru swap_in
       }
     }

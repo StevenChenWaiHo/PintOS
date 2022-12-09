@@ -28,12 +28,14 @@ st_printf(void) {
         while (e != list_end (&ste->upages))
         {
             struct share_frame_info *info = list_entry(e, struct share_frame_info , page_elem);
+            printf("st_printf: upage: %p of file: %u\n", info->upage, file_hash (ste->file));
+
             struct ft_entry *fte = ft_search_frame_with_page(info->upage);
             if (fte){
                 struct list_elem *o = list_begin (&fte->owners);
                 while (o != list_end (&fte->owners)) {
                     struct thread *t = list_entry(o, struct owner, owner_elem)->process;
-                    printf("st_printf: upage: %p of file: %u, owner tid: %d\n", info->upage, file_hash (ste->file), t->tid);
+                    printf("owner tid: %d\n", t->tid);
                     o = list_next(o);   
                 }
             }else 

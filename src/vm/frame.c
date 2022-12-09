@@ -139,7 +139,7 @@ free_frame(void *kpage)
     struct ft_entry *entry = ft_search_entry(kpage);
     if (entry) {
         hash_delete(&ft, &entry->ft_elem);
-        palloc_free_page(entry->kernel_page);
+        // palloc_free_page(entry->kernel_page);
         struct list_elem *e = list_begin (&entry->owners);
         while (e != list_end (&entry->owners)) {
             struct owner *owner = list_entry(e, struct owner, owner_elem);

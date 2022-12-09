@@ -384,9 +384,11 @@ process_exit (void)
      to the kernel-only page directory. */
   uint32_t *pd;
   pd = cur->pagedir;
-    /**
+
+  /**
    * SHARING: do not destroy file at fd if page is being shared
    **/
+
   ft_access_lock();
   /* remove thread as frame owner */
   struct ft_entry *fte = ft_search_frame_with_owner(thread_current());
@@ -403,6 +405,7 @@ process_exit (void)
       e = list_next(e);
     }
     if (cur) {
+      printf("current thread tid %d removed as owner from frame:\n", cur->process->tid);
       list_remove(&cur->owner_elem);
     }
   }
@@ -423,9 +426,10 @@ process_exit (void)
       pagedir_destroy (pd);
     }
     if (fte) {
-      printf("rcursively freeing at palloc free page for some reason\n");
+      printf("should call free frame here right?\n");
       // free_frame(fte->kernel_page);
-    } 
+    }
+    /* *********** SHARING DONE *********** */
   }
 
   ft_access_unlock();
