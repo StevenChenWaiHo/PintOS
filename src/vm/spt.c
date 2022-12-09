@@ -166,6 +166,9 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
       entry->zbytes = page_zero_bytes;
       entry->upage = upage;
       entry->writable = writable;
+      if (thread_current ()->tid == 7 && entry->upage == 0x10000000) {
+        //printf("File %p mapped to uaddr %p", file, upage);
+      }
       spt_insert (entry);
     } else {
       // Previous entry present, update SPT meta-data (load_segment).
@@ -198,35 +201,46 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
   if (!entry) {
     /* Check if needs stack growth. */ 
     if (esp == NULL) {
+      printf("1");
       return false;
     }
     if (fault_addr == NULL || is_kernel_vaddr (fault_addr)
       || is_below_ustack (fault_addr) || esp - fault_addr > STACK_OFS
       || (PHYS_BASE - (int) fault_page) > STACK_MAX) { 
-        //printf("Tid : %d, fault_addr = %p", thread_current ()->tid, fault_addr);
+      printf("Tid : %d, fault_addr = %p\n", thread_current ()->tid, fault_addr);
       return false;
     }
     return grow_stack (fault_page);
   } else {
     /* Write to read-only page. */
     if ((write && !entry->writable)) {
+      printf("3");
       return false;
     } 
     /* Allocate frame if frame not previously allocated. */
     void *frame_pt = get_frame (PAL_USER, entry->upage, entry->file);
+
+      printf("kpage = %p\n", frame_pt);
     if (frame_pt == NULL) {
+      printf("4");
       return false;
     } else {
+
       //Swapping takes place first before checking location
       if (entry->swapped) {
         //Takes information in swap disk thru swap_in
         swap_in(frame_pt, entry->swap_slot);
         entry->swapped = false;
-        //printf("Swapping in page at %p, w? %d\n", fault_page, entry->writable);
+        printf("Tid :%d, Swapping in page at %p, w? %d\n", thread_current()->tid, fault_page, entry->writable);
         if (!install_page (fault_page, frame_pt, entry->writable)) {
+          printf("5");
           return false;
         }
+        if (fault_page == 0xbffff000) {
+          printf("pagedir have %p for page 0xbffff000 after swap \n", pagedir_get_page (thread_current ()->pagedir, fault_page));
+        }
         pagedir_set_dirty(thread_current()->pagedir, fault_page, true);
+        return;
       } else if (entry->location == FILE_SYS || entry->location == MMAP) {
         // Lazy loading..
         /* Either zero-out page,
@@ -236,6 +250,7 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
         if (entry->zbytes == PGSIZE) {
           zero_from (frame_pt, PGSIZE);
         } else if (!read_segment_from_file (entry, frame_pt)) {
+          printf("6");
           return false;
         }
         /**
@@ -245,6 +260,7 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
          * ^ This can be done by install_page() 
          **/
         if (!install_page (fault_page, frame_pt, entry->writable)) {
+          printf("7");
           return false;
         }
         

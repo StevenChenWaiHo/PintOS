@@ -426,15 +426,14 @@ mmap (uint32_t *args, uint32_t *eax) {
 
 void mm_file_write(struct file *file, int size, void *upage, off_t ofs, uint32_t *pd) 
 {
-  ASSERT (pagedir_get_page (pd, upage));
-  if (pagedir_is_dirty (pd, upage)) {
-      if (size < PGSIZE) {
-        file_write_at (file, upage, size, ofs);
-      } else {
-        file_write_at (file, upage, PGSIZE, ofs);        
-      }
+  if (pagedir_get_page (pd, upage) && pagedir_is_dirty (pd, upage)) {
+    if (size < PGSIZE) {
+      file_write_at (file, upage, size, ofs);
+    } else {
+      file_write_at (file, upage, PGSIZE, ofs);        
     }
     pagedir_clear_page (pd, upage);
+  }
 }
 
 /* Helper function to destroy MMAP pair when closing a file. */
