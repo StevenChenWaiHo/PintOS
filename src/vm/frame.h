@@ -19,7 +19,6 @@ struct ft_entry
 struct owner
 {
     struct thread *process;
-    void * upage;
     struct list_elem owner_elem;
 };
 
@@ -32,6 +31,5 @@ struct ft_entry * ft_search_entry(void *);
 void ft_free (struct thread *);
 void free_frame(void *);
 void ft_add_page_entry(struct ft_entry *);
-struct ft_entry *ft_search_frame_with_page(void *);
 
 #endif /* vm/frame.h */
