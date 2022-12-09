@@ -135,7 +135,33 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
 
   while (read_bytes > 0 || zero_bytes > 0) 
   {
-    /* Calculate how to fill this page.
+      /**
+      * SHARING: IMPLEMENTATION COMMENTED OUT, FOR YOUR REFERENCE
+      * if page is read only:
+      * look up share table to find FRAME with same FILE and PAGE NO
+      * if frame exists:
+      *   i. insert into share table the PAGE of FILE
+      *   ii. copy KPAGE of the shared frame to KPAGE of PAGEDIR of thread_current()
+      
+        *********** CODE SEGMENT ***********
+        if (!writable)
+        {
+          ft_access_lock();
+          struct ft_entry *fte = st_find_frame_for_upage(upage, file);
+          if (fte != NULL)
+          {
+            ft_access_unlock();
+            return share_page(upage, fte, writable);
+          }
+          else {
+            ft_access_unlock();
+          }   
+        }
+        
+        *********** SHARING DONE *********** 
+      */
+      
+      /* Calculate how to fill this page.
        We will read PAGE_READ_BYTES bytes from FILE
        and zero the final PAGE_ZERO_BYTES bytes. */
     size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
@@ -197,7 +223,28 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
     /* Write to read-only page. */
     if ((write && !entry->writable)) {
       return false;
-    } 
+    }
+
+    /** SHARING: 
+     * If uaddr is in share table, install page from there
+     
+      *********** CODE SEGMENT ***********
+
+      if (!entry->writable)
+        {
+          ft_access_lock();
+          struct ft_entry *fte = st_find_frame_for_upage(entry->upage, entry->file);
+          if (fte)
+          {
+            ft_access_unlock();
+            return share_page(fault_page, fte, entry->writable);
+          }else {
+          }
+          ft_access_unlock();
+        }
+      *********** SHARING DONE ***********
+    */ 
+
     /* Allocate frame if frame not previously allocated. */
     void *frame_pt = get_frame (PAL_USER, entry->upage, entry->file);
     if (frame_pt == NULL) {
@@ -229,6 +276,23 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
         if (!install_page (fault_page, frame_pt, entry->writable)) {
           return false;
         }
+
+        /** SHARING: IMPLEMENTATION COMMENTED OUT, FOR YOUR REFERENCE
+         * If new frame is read-only, add entry to share table
+        
+          *********** CODE SEGMENT ***********
+          if (!entry->writable)
+          {
+          ft_access_lock();
+          st_access_lock();
+          struct ft_entry *ft_entry = ft_search_entry(fault_page);
+          bool inserted = st_insert_share_entry(entry->file, entry->upage, ft_entry);
+          ASSERT(inserted);
+          ft_access_unlock();
+          st_access_unlock();
+          }
+          *********** SHARING DONE ***********
+        */
         
       }
     }

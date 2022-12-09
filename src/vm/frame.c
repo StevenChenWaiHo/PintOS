@@ -198,7 +198,7 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
   return kernel_page;
 }
 
-/*hash find finds the hash element based on an entry's KPAGE address*/
+/*hash find finds the hash element based on an entry's UPAGE address*/
 struct ft_entry *
 ft_search_entry(void *upage)
 {
@@ -212,6 +212,29 @@ ft_search_entry(void *upage)
   return hash_entry(e, struct ft_entry, ft_elem);
 }
 
+/*hash find finds the hash element based on the thread that owns a page */
+struct ft_entry *
+ft_search_frame_with_owner(struct thread *t)
+{
+    /* iterate through frame table to find a match */
+    struct hash_iterator i;
+    hash_first (&i, &ft);
+    while (hash_next (&i))
+    {
+        struct ft_entry *f = hash_entry (hash_cur (&i), struct ft_entry, ft_elem);
+        struct list_elem *e = list_begin (&f->owners);
+        while (e != list_end (&f->owners))
+        {
+            struct owner *owner = list_entry(e, struct owner, owner_elem);
+            if (owner->process == t)
+            {
+              return f;                  
+            }
+            e = list_next(e);
+        }  
+    }
+    return NULL;
+}
 
 void
 ft_free (struct thread *t) {

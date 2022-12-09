@@ -390,6 +390,32 @@ process_exit (void)
      to the kernel-only page directory. */
   uint32_t *pd;
   pd = cur->pagedir;
+
+  /**
+   * SHARING: do not destroy file at fd if page is being shared
+   * 1. remove thread as frame owner
+  
+    *********** CODE SEGMENT *********** 
+    ft_access_lock();
+   
+    struct ft_entry *fte = ft_search_frame_with_owner(thread_current());
+    if (fte) {
+      struct owner *cur = NULL;
+      struct list_elem *e = list_begin (&fte->owners);
+      while (e != list_end (&fte->owners)) {
+        struct owner *owner = list_entry(e, struct owner, owner_elem);
+        if (owner->process == thread_current()) {
+          cur = owner;
+        }
+        if (cur) {
+          list_remove(&cur->owner_elem);
+        }
+        e = list_next(e);
+      }
+    }
+    if (!fte || list_empty(&fte->owners)) {
+    *********** SHARING DONE ***********
+   **/
   if (pd != NULL)
     {
       /* Correct ordering here is crucial.  We must set

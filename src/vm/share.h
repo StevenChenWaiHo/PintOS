@@ -14,14 +14,15 @@ struct st_entry
 struct share_frame_info
 {
     struct ft_entry *frame;     /* frame associated with the upage*/
-    void * upage;               /* upage of the page */
     struct list_elem page_elem; /* list elem for list upages in an st_entry */
 };
 
+void st_printf(void);
 void st_init(void);
 struct hash *get_st(void);
 void st_access_lock(void);
 void st_access_unlock(void);
+bool share_page(void *upage, struct ft_entry *fte, bool writable);
 void st_free_share_entry(struct st_entry*);
 struct st_entry *st_find_share_entry(struct file *file);
 struct ft_entry *st_find_frame_for_upage (void *, struct file *);
