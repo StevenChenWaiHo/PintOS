@@ -19,16 +19,20 @@ enum page_location
 
 struct spt_entry
 {
-  void *upage;
-  enum page_location location;
-  bool writable;
-  struct hash_elem spt_elem;
-  struct file *file;
-  size_t swap_slot;
-  bool swapped;
-  off_t ofs;
-  uint32_t rbytes, zbytes;
-  uint32_t *pd;
+  void *upage;                  /* Virtual address of the entry*/
+  enum page_location location;  /* Location of the page. */
+  bool writable;                /* Read or write boolean. */
+  struct hash_elem spt_elem;    /* Hash element for supplemental page table. */
+  struct file *file;            /* If location is FILE_SYS or MMAP, 
+                                    stores the referencing file. */
+  size_t swap_slot;             /* If location is SWAP, stores the referencing
+                                    swap slot. */
+  bool swapped;                 /* Indicating if the entry is swapped. */
+  off_t ofs;                    /* File offset the page is reading/writing in.*/
+  uint32_t rbytes, zbytes;      /* The bytes that are needed to be read/write in
+                                    or zeroed when referencing the file.*/
+  uint32_t *pd;                 /* The corresponding page directory that this
+                                    entry is accessing. */
 };
 
 bool spt_init (struct thread *);
