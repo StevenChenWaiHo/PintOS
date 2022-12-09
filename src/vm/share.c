@@ -87,7 +87,7 @@ st_find_share_entry(struct file *file)
     {
         return NULL;
     }
-    printf("########st_find_share_entry: found file at %u\n", file_hash(file));
+
     return hash_entry(e, struct st_entry, st_elem);
 }
 

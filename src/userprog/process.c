@@ -400,13 +400,12 @@ process_exit (void)
       struct owner *owner = list_entry(e, struct owner, owner_elem);
       if (owner->process == thread_current()) {
         cur = owner;
-        break;
+      }
+      if (cur) {
+        printf("current thread tid %d removed as owner from frame:\n", cur->process->tid);
+        list_remove(&cur->owner_elem);
       }
       e = list_next(e);
-    }
-    if (cur) {
-      printf("current thread tid %d removed as owner from frame:\n", cur->process->tid);
-      list_remove(&cur->owner_elem);
     }
   }
   if (fte && !list_empty(&fte->owners)) {
