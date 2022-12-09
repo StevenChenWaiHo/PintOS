@@ -27,7 +27,6 @@ void ft_access_lock(void);
 void ft_access_unlock(void);
 struct ft_entry * ft_search_entry(void *);
 void free_frame(void *);
-void ft_add_page_entry(struct ft_entry *);
 struct ft_entry *ft_search_frame_with_page(void *);
 struct ft_entry *ft_search_frame_with_owner(struct thread *);
 

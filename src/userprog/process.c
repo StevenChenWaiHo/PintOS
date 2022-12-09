@@ -324,7 +324,6 @@ process_wait (tid_t child_tid)
 void
 process_exit (void)
 {
-  printf("thread tid %d exits\n", thread_current()->tid);
   enum intr_level old_level = intr_disable ();
 
   /* Set the exit_code its child_thead_coord. */
@@ -393,7 +392,6 @@ process_exit (void)
   /* remove thread as frame owner */
   struct ft_entry *fte = ft_search_frame_with_owner(thread_current());
   if (fte) {
-    printf("unlink exiting thread from frame:\n");
     struct owner *cur = NULL;
     struct list_elem *e = list_begin (&fte->owners);
     while (e != list_end (&fte->owners)) {
@@ -402,15 +400,12 @@ process_exit (void)
         cur = owner;
       }
       if (cur) {
-        printf("current thread tid %d removed as owner from frame:\n", cur->process->tid);
         list_remove(&cur->owner_elem);
       }
       e = list_next(e);
     }
   }
-  if (fte && !list_empty(&fte->owners)) {
-    printf ("pd being shared, not freed\n");
-  } else {
+  if (!fte || list_empty(&fte->owners)) {
     if (pd != NULL)
     {
       /* Correct ordering here is crucial.  We must set

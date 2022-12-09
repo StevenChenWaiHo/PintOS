@@ -52,12 +52,14 @@ get_frame(enum palloc_flags flag, void *upage, struct file *file)
     {
         /*TODO: evict a frame and replace with new page allocation*/
         PANIC("No free frames available for allocation!\n");
+        ASSERT(false);
         return NULL;
     }
     struct ft_entry *entry = (struct ft_entry *) malloc(sizeof(struct ft_entry));
     if (!entry)
     {
         printf("Cannot alloc frame table entry!\n");
+        ASSERT(false);
         return NULL;
     }
     entry->kernel_page = kernel_page;
@@ -68,6 +70,7 @@ get_frame(enum palloc_flags flag, void *upage, struct file *file)
     if (!owner)
     {
         printf("Cannot alloc frame page owner!\n");
+        ASSERT(false);
         return NULL; 
     }
     owner->process = thread_current();    
@@ -90,25 +93,7 @@ ft_search_entry(void *upage)
   return hash_entry(e, struct ft_entry, ft_elem);
 }
 
-/**returns the page entry with the provided file name and page.
- *if entry does not exist, return NULL*/
-struct ft_entry *
-ft_search_frame_with_page(void *upage)
-{
-    /* iterate through frame table to find a match */
-    struct hash_iterator i;
-    hash_first (&i, &ft);
-    while (hash_next (&i))
-    {
-        struct ft_entry *f = hash_entry (hash_cur (&i), struct ft_entry, ft_elem);
-        if (upage == f->user_page)
-        {
-            return f;                  
-        }
-    }
-    return NULL;
-}
-
+/*hash find finds the hash element based on the thread that owns a page */
 struct ft_entry *
 ft_search_frame_with_owner(struct thread *t)
 {
@@ -147,11 +132,6 @@ free_frame(void *kpage)
         }
     }
     free(entry);
-}
-
-void
-ft_add_page_entry(struct ft_entry * entry) {
-    hash_insert(&ft, &entry->ft_elem);
 }
 
 static bool

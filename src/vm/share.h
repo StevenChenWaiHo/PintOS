@@ -14,8 +14,6 @@ struct st_entry
 struct share_frame_info
 {
     struct ft_entry *frame;     /* frame associated with the upage*/
-    // void * upage;               
-    /* upage of the page */
     struct list_elem page_elem; /* list elem for list upages in an st_entry */
 };
 

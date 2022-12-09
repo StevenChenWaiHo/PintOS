@@ -103,19 +103,19 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
       *   i. insert into share table the PAGE of FILE
       *   ii. copy KPAGE of the shared frame to KPAGE of PAGEDIR of thread_current()
       */
-
       if (!writable)
       {
         ft_access_lock();
         struct ft_entry *fte = st_find_frame_for_upage(upage, file);
-        if (fte)
+        if (fte != NULL)
         {
+          /* query here is causing page fault */
           ft_access_unlock();
           return share_page(upage, fte, writable);
         }else {
-          printf("cannot find sharable frame!\n");
+          ft_access_unlock();
         }
-        ft_access_unlock();
+        
       }
       /* *********** SHARING DONE *********** */
 
@@ -169,8 +169,6 @@ bool
 spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void *esp) {
   void *fault_page = pg_round_down (fault_addr);
   struct spt_entry *entry = spt_lookup (fault_page);
-
-  printf("spt_pf_handler:fault addr %p\n", fault_page);
   
   if (!entry) {
     /* Check if needs stack growth. */ 
@@ -200,7 +198,6 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
           ft_access_unlock();
           return share_page(fault_page, fte, entry->writable);
         }else {
-          printf("cannot find sharable frame!\n");
         }
         ft_access_unlock();
       }
@@ -242,7 +239,6 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
         struct ft_entry *ft_entry = ft_search_entry(fault_page);
         bool inserted = st_insert_share_entry(entry->file, entry->upage, ft_entry);
         ASSERT(inserted);
-        printf("added to share table\n");
         ft_access_unlock();
         st_access_unlock();
         }
