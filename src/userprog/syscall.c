@@ -435,7 +435,6 @@ void mm_file_write(struct file *file, int size, void *upage, off_t ofs, uint32_t
       }
     } 
     pagedir_clear_page (pd, upage);
-  }
 }
 
 /* Helper function to destroy MMAP pair when closing a file. */
