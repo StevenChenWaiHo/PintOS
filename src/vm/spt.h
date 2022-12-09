@@ -32,8 +32,8 @@ struct spt_entry
 };
 
 bool spt_init (struct thread *);
-void spt_lock ();
-void spt_unlock ();
+void spt_lock (void);
+void spt_unlock (void);
 bool spt_insert (struct spt_entry *);
 struct spt_entry *spt_lookup (void *);
 struct spt_entry *spt_thread_lookup (void *, struct thread *);
@@ -46,4 +46,4 @@ bool spt_pf_handler (void *, bool, bool, bool, void *);
 
 void insert_stack_entry (void *);
 
-#endif
+#endif /* vm/spt.h */

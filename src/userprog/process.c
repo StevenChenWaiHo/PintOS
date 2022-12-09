@@ -556,7 +556,6 @@ load (const char *file_name, void (**eip) (void), void **esp)
   thread_current ()->process_file = file;
   if (file == NULL) 
     {
-      // printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
 

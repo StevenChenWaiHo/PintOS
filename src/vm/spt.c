@@ -40,13 +40,13 @@ static struct hash *spt_current () {
 
 /* Acquires the lock for spts. */
 void
-spt_lock () {
+spt_lock (void) {
   lock_acquire (&sptlock);
 }
 
 /* Releases the lock for spts. */
 void
-spt_unlock () {
+spt_unlock (void) {
   lock_release (&sptlock);
 }
 
@@ -188,8 +188,6 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
     } else {
       /* Entry present, updates SPT meta-data (load_segment). */
       if (page_read_bytes != entry->rbytes) {
-        uint32_t old_rb = entry->rbytes;
-        uint32_t old_zb = entry->zbytes;
         entry->rbytes = page_read_bytes;
         entry->zbytes = page_zero_bytes;
       }
