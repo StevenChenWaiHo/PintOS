@@ -220,7 +220,7 @@ ft_free (struct thread *t) {
     while (e != list_end (&snd_chance)) {
       struct ft_entry *snd_entry = list_entry (e, struct ft_entry, ele_elem);
       e = list_next (e);
-      if (snd_entry->t = t) {
+      if (snd_entry->t == t) {
         list_remove (&snd_entry->ele_elem);
       }
     }
