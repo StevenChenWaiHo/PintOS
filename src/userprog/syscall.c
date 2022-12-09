@@ -247,6 +247,11 @@ open (uint32_t *args, uint32_t *eax) {
     *eax = ERROR;
   } else {
     struct file_record *fd_pair = malloc (sizeof (struct file_record));
+    if (fd_pair == NULL)
+    {
+      printf ("Cannot allocate fd_pair\n");
+      return;
+    }
     fd_pair->id = thread_current ()->curr_fd++;
     fd_pair->file_ref = fp;
     list_push_front (&thread_current ()->fd_ref, &fd_pair->f_elem);
@@ -413,6 +418,11 @@ mmap (uint32_t *args, uint32_t *eax) {
         /* Insert MMAP pair into MM_REF,
           allocating a new MAPID to the mapping. */
         struct file_record *mm_pair = malloc (sizeof (struct file_record));
+        if (mm_pair == NULL)
+        {
+          printf ("Cannot allocate mm_pair\n");
+          return;
+        }
         mm_pair->id = thread_current ()->curr_mapid++;
         mm_pair->file_ref = fp;
         mm_pair->mapping_addr = addr;

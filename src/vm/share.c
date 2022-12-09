@@ -100,7 +100,7 @@ st_insert_share_entry(struct file *file, void *upage, struct ft_entry *fte)
         e = (struct st_entry *)malloc(sizeof(struct st_entry));
         if (!e)
         {
-            // printf("Cannot alloc share_frame_info for st_entry!\n");
+            printf("Cannot alloc share_frame_info for st_entry!\n");
             return false; 
         }
         e->file = file;

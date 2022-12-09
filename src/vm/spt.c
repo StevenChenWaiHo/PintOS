@@ -148,6 +148,7 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
       /* Entry not present, creates and inserts upage. */
       entry = (struct spt_entry *) malloc (sizeof (struct spt_entry));
       if (entry == NULL) {
+        printf("Cannot allocate entry\n");
         return false;
       }
       entry->location = location;
@@ -200,6 +201,7 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
     /* Allocate frame if frame not previously allocated. */
     void *frame_pt = get_frame (PAL_USER, entry->upage, entry->file);
     if (frame_pt == NULL) {
+      printf("Cannot get frame_pt\n");
       return false;
     } else {
       /* Checks if the spt_entry has been swapped. */
@@ -235,9 +237,14 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
 }
 
 /* Insert an spt_entry on the stack into the spt of the current thread. */
-bool
+void
 insert_stack_entry (void *upage) {
   struct spt_entry *entry = (struct spt_entry *) malloc (sizeof (struct spt_entry));
+  if (entry == NULL)
+  {
+    printf ("Cannot allocate entry\n");
+    return;
+  }
   entry->upage = upage;
   entry->location = STACK;
   entry->writable = true;

@@ -120,6 +120,10 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
         //void *cur_upage = list_entry(list_front(&cur_ft->owners), struct owner, owner_elem)->upage;
         void *cur_upage = cur_ft->upage;
         struct spt_entry *cur_spt = spt_thread_lookup(cur_upage, cur_ft->t);
+        if (cur_spt == NULL)
+        {
+          printf ("Cannot allocate cur_spt\n");
+        }
         //printf("%p", cur_upage);
         if (pagedir_is_accessed(cur_ft->t->pagedir, cur_upage))
         {
@@ -227,6 +231,11 @@ ft_free (struct thread *t) {
 void free_frame(void *upage)
 {
   struct ft_entry *entry = ft_search_entry(upage);
+  if (entry == NULL)
+  {
+    printf ("Cannot allocate entry\n");
+    return;
+  }
   hash_delete(&ft, &entry->ft_elem);
   palloc_free_page(entry->kernel_page);
   free(entry);

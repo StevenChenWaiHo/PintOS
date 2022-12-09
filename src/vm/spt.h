@@ -44,6 +44,6 @@ bool lazy_load (struct file *, off_t, uint8_t *,
   uint32_t, uint32_t, bool, enum page_location);
 bool spt_pf_handler (void *, bool, bool, bool, void *);
 
-bool insert_stack_entry (void *);
+void insert_stack_entry (void *);
 
 #endif

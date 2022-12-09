@@ -65,7 +65,6 @@ process_execute (const char *file_name)
     *child = malloc (sizeof (struct child_thread_coord));
   if (!child) {
     palloc_free_page (fn_copy); 
-    printf ("Cannot allocate child_thread_coord\n");
     return TID_ERROR;
   }
 
@@ -79,8 +78,7 @@ process_execute (const char *file_name)
   struct start_process_param 
     *param = malloc (sizeof (struct start_process_param));
   if (!param) {
-    palloc_free_page (fn_copy); 
-    printf ("Cannot allocate start_process_param\n");
+    palloc_free_page (fn_copy);
     free_child_coord (child);
     return TID_ERROR;
   }
@@ -140,6 +138,12 @@ start_process (void *param_struct)
   /* Create a new file_name copy for future uses and set thread's name. */
   char *sp;
   char *fn_copy = malloc (strlen (file_name) + 1);
+  if (fn_copy == NULL)
+  {
+    printf ("Cannot allocate fn_copy\n");
+    intr_set_level (old_level);
+    return;
+  }
   strlcpy (fn_copy, file_name, strlen (file_name) + 1);
   file_name = strtok_r (file_name, " ", &sp);
   strlcpy (thread_current ()->name, file_name, strlen (file_name) + 1);
@@ -526,7 +530,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   thread_current ()->process_file = file;
   if (file == NULL) 
     {
-      printf ("load: %s: open failed\n", file_name);
+      // printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
 
@@ -541,7 +545,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
       || ehdr.e_phentsize != sizeof (struct Elf32_Phdr)
       || ehdr.e_phnum > 1024) 
     {
-      printf ("load: %s: error loading executable\n", file_name);
+      // printf ("load: %s: error loading executable\n", file_name);
       goto done; 
     }
 
@@ -707,15 +711,11 @@ setup_stack (void **esp)
     {
       success = install_page (upage, kpage, true);
       if (success) {
-        struct spt_entry *entry = (struct spt_entry *) malloc (sizeof (struct spt_entry));
-        entry->upage = upage;
-        entry->location = STACK;
-        entry->writable = true;
-        spt_insert (entry);
+        insert_stack_entry (upage);
         *esp = PHYS_BASE;
       }
       else
-        free_frame (kpage);
+        free_frame (upage);
     }
   return success;
 }
