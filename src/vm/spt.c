@@ -293,11 +293,8 @@ grow_stack(void *upage) {
   entry->writable = true;
   spt_insert (entry);
   void* kpage = get_frame (PAL_USER | PAL_ZERO, upage, NULL);
-  if (kpage != NULL && !install_page(upage, kpage, true))
-  {
-    return false;
-  }
-  return true;
+  ASSERT(kpage);
+  return install_page(upage, kpage, true);
 }
 
 static void
