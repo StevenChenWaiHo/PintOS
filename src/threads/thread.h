@@ -2,6 +2,7 @@
 #define THREADS_THREAD_H
 
 #include <debug.h>
+#include <hash.h>
 #include <list.h>
 #include <stdint.h>
 #include "threads/synch.h"
@@ -107,6 +108,11 @@ struct thread
     struct list fd_ref;
     struct file *process_file;
 #endif
+
+    struct hash spt;
+    struct list mm_ref;
+    int curr_mapid;
+
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
@@ -122,11 +128,12 @@ struct child_thread_coord
       struct list_elem child_elem; /* list elem for list children in parent process */
    };
 
-struct fd_elem_struct
+struct file_record
   {
-    int fd;
+    int id;
     struct file *file_ref;
-    struct list_elem fd_elem;
+    void *mapping_addr;
+    struct list_elem f_elem;
   };
 
 /* If false (default), use round-robin scheduler.

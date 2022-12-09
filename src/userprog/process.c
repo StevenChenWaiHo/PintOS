@@ -21,6 +21,10 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 
+#include "vm/frame.h"
+#include "vm/share.h"
+#include "vm/spt.h"
+
 /* Extra argument counts used in argument passing, containing null pointer,
    pointer to argv, argc, return adr. */
 #define EXTRA_ARGS_NO 4   
@@ -193,7 +197,6 @@ start_process (void *param_struct)
     cur_coord->tid = thread_current ()->tid;
     sema_up (&cur_coord->sema);
   }
-
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -343,7 +346,7 @@ process_exit (void)
       e = e_next;
     }
   }
-
+  intr_set_level (old_level);
   /* Closing all files that are still open in this process. 
      Corresponding file descriptor pairs are also freed here. */
   filesys_lock ();
@@ -351,7 +354,7 @@ process_exit (void)
   if (!list_empty (fd_ref_list)) {
     struct list_elem *e = list_front (fd_ref_list);
     while (e != list_end (fd_ref_list)) {
-      struct fd_elem_struct *open_file = list_entry (e, struct fd_elem_struct, fd_elem);
+      struct file_record *open_file = list_entry (e, struct file_record, f_elem);
       file_close (open_file->file_ref);
       e = list_next (e);
       free (open_file);
@@ -362,6 +365,22 @@ process_exit (void)
      raising the deny_write limit on the file system.*/
   file_close (cur->process_file);
   filesys_unlock ();
+  /* Freeing MMAP elements by calling helper function for munmap. */
+  struct list *mm_ref_list = &thread_current ()->mm_ref;
+  if (!list_empty (mm_ref_list)) {
+    struct list_elem *e = list_front (mm_ref_list);
+    while (e != list_end (mm_ref_list)) {
+      struct file_record *mm_pair = list_entry (e, struct file_record, f_elem);
+      e = list_next (e);
+      mm_destroy (mm_pair);
+    }
+  }
+
+  /* Freeing ft entries, removing second chance candidates in the process. */
+  ft_free (thread_current ());
+  
+  /* Freeing SPT elements, removing entries in the swap disk. */
+  spt_destroy ();
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -389,7 +408,9 @@ process_exit (void)
       return;
   }
 
-  intr_set_level (old_level);
+  /* Should consult supplemental page table for any extra stuff to free here.*/
+
+
   sema_up (&cur->child_thread_coord->sema);
 }
 
@@ -582,7 +603,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
           break;
         }
     }
-
+  filesys_unlock ();
   /* Set up stack. */
   if (!setup_stack (esp))
     goto done;
@@ -595,13 +616,11 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  filesys_unlock ();
+  filesys_try_unlock ();
   return success;
 }
 
 /* load () helpers. */
-
-static bool install_page (void *upage, void *kpage, bool writable);
 
 /* Checks whether PHDR describes a valid, loadable segment in
    FILE and returns true if so, false otherwise. */
@@ -669,56 +688,8 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT ( (read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
-
-  file_seek (file, ofs);
-  while (read_bytes > 0 || zero_bytes > 0) 
-    {
-      /* Calculate how to fill this page.
-         We will read PAGE_READ_BYTES bytes from FILE
-         and zero the final PAGE_ZERO_BYTES bytes. */
-      size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
-      size_t page_zero_bytes = PGSIZE - page_read_bytes;
-      
-      /* Check if virtual page already allocated */
-      struct thread *t = thread_current ();
-      uint8_t *kpage = pagedir_get_page (t->pagedir, upage);
-      
-      if (kpage == NULL){
-        
-        /* Get a new page of memory. */
-        kpage = palloc_get_page (PAL_USER);
-        if (kpage == NULL){
-          return false;
-        }
-        
-        /* Add the page to the process's address space. */
-        if (!install_page (upage, kpage, writable)) 
-        {
-          palloc_free_page (kpage);
-          return false; 
-        }     
-        
-      } else {
-        
-        /* Check if writable flag for the page should be updated */
-        if (writable && !pagedir_is_writable (t->pagedir, upage)){
-          pagedir_set_writable (t->pagedir, upage, writable); 
-        }
-        
-      }
-
-      /* Load data into the page. */
-      if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes){
-        return false; 
-      }
-      memset (kpage + page_read_bytes, 0, page_zero_bytes);
-
-      /* Advance. */
-      read_bytes -= page_read_bytes;
-      zero_bytes -= page_zero_bytes;
-      upage += PGSIZE;
-    }
-  return true;
+  return
+    lazy_load (file, ofs, upage, read_bytes, zero_bytes, writable, FILE_SYS);
 }
 
 /* Create a minimal stack by mapping a zeroed page at the top of
@@ -727,16 +698,24 @@ static bool
 setup_stack (void **esp) 
 {
   uint8_t *kpage;
+  uint8_t *upage = ((uint8_t *)PHYS_BASE) - PGSIZE;
+  struct file *file = NULL;
   bool success = false;
 
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  kpage = get_frame (PAL_USER | PAL_ZERO, upage, file);
   if (kpage != NULL) 
     {
-      success = install_page ( ( (uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
-      if (success)
+      success = install_page (upage, kpage, true);
+      if (success) {
+        struct spt_entry *entry = (struct spt_entry *) malloc (sizeof (struct spt_entry));
+        entry->upage = upage;
+        entry->location = STACK;
+        entry->writable = true;
+        spt_insert (entry);
         *esp = PHYS_BASE;
+      }
       else
-        palloc_free_page (kpage);
+        free_frame (kpage);
     }
   return success;
 }
@@ -750,7 +729,7 @@ setup_stack (void **esp)
    with palloc_get_page ().
    Returns true on success, false if UPAGE is already mapped or
    if memory allocation fails. */
-static bool
+bool
 install_page (void *upage, void *kpage, bool writable)
 {
   struct thread *t = thread_current ();

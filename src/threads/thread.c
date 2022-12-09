@@ -1,5 +1,6 @@
 #include "threads/thread.h"
 #include <debug.h>
+#include <hash.h>
 #include <stddef.h>
 #include <random.h>
 #include <stdio.h>
@@ -14,6 +15,7 @@
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
+#include "vm/spt.h"
 
 /* Random value for struct thread's `magic' member.
    Used to detect stack overflow.  See the big comment at the top
@@ -215,11 +217,15 @@ thread_create (const char *name, int priority,
 
   /* Add to run queue. */
   thread_unblock (t);
-
+  
+  spt_init (t);
+  list_init (&t->mm_ref);
+  t->curr_mapid = 0;
   #ifdef USERPROG
     list_init (&t->fd_ref);
     t->curr_fd = 2;
   #endif
+  printf("Thread %d created.\n", t->tid);
   return tid;
 }
 
