@@ -425,13 +425,12 @@ process_exit (void)
       pagedir_destroy (pd);
     }
     if (fte) {
-      printf("should call free frame here right?\n");
-      //free_frame(fte->kernel_page);
+    /* should call free frame here right? */
+      free_frame(fte->kernel_page);
     }
-    /* *********** SHARING DONE *********** */
   }
-
   ft_access_unlock();
+  /* *********** SHARING DONE *********** */
   cur_coord->child_is_terminated = true;
   
   /* Free struct child_thread_coord if current thread is an orphan. */

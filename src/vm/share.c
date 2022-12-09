@@ -23,14 +23,14 @@ st_printf(void) {
     while (hash_next (&i))
     {
         struct st_entry *ste = hash_entry (hash_cur (&i), struct st_entry, st_elem);
-        struct list_elem *e = list_begin (&ste->upages);
         printf("------------- file: %u\n", file_hash (ste->file));
+        struct list_elem *e = list_begin (&ste->upages);
         while (e != list_end (&ste->upages))
         {
             struct share_frame_info *info = list_entry(e, struct share_frame_info , page_elem);
-            printf("st_printf: upage: %p of file: %u\n", info->upage, file_hash (ste->file));
+            printf("st_printf: upage: %p of file: %u\n", info->frame->user_page, file_hash (ste->file));
 
-            struct ft_entry *fte = ft_search_entry(info->upage);
+            struct ft_entry *fte = ft_search_entry(info->frame->user_page);
             if (fte){
                 struct list_elem *o = list_begin (&fte->owners);
                 while (o != list_end (&fte->owners)) {
@@ -73,9 +73,15 @@ void st_access_unlock(void)
 void
 st_free_share_entry(struct st_entry *entry)
 {
+    struct list upages = entry->upages;
+    while (!list_empty(&upages)) {
+        struct share_frame_info *info = list_entry(list_pop_front(&upages), struct share_frame_info, page_elem); 
+        free(info);
+    }
     free(entry);
 }
 
+/* find entry with FILE in share table */
 struct st_entry *
 st_find_share_entry(struct file *file)
 {
@@ -109,7 +115,7 @@ st_find_frame_for_upage (void *upage, struct file *file)
     while (e != list_end (&entry->upages))
     {
         struct share_frame_info *info = list_entry(e, struct share_frame_info, page_elem);
-        if (info->upage == upage) {
+        if (info->frame->user_page == upage) {
             fte = info->frame;
             break;
         }
@@ -117,6 +123,22 @@ st_find_frame_for_upage (void *upage, struct file *file)
     }
     printf(fte? "st_find_frame_for_upage: frame exists\n" : "st_find_frame_for_upage: no frame\n");
     return fte;  
+}
+
+bool
+share_page(void *upage, struct ft_entry *fte, bool writable) {
+  st_access_lock();
+  bool success = install_page(upage, fte->kernel_page, writable);
+  struct owner *owner = (struct owner *) malloc(sizeof(struct owner));
+  if (!owner)
+  {
+      printf("Cannot alloc frame page owner!\n");
+      return false; 
+  }
+  owner->process = thread_current();
+  list_push_back(&(fte->owners), &owner->owner_elem);
+  st_access_unlock();
+  return true;
 }
 
 /*Insert share entry for FILE of  UPAGE at FRAME fte.*/
@@ -131,7 +153,6 @@ st_insert_share_entry(struct file *file, void *upage, struct ft_entry *fte)
     }
     // printf("st_insert_share_entry:: can malloc share_frame_info for st_entry!\n");
     info->frame = fte;
-    info->upage = upage;
 
     struct st_entry *e = st_find_share_entry (file);
     if (e == NULL)

@@ -106,28 +106,15 @@ lazy_load (struct file *file, off_t ofs, uint8_t *upage,
 
       if (!writable)
       {
-        st_access_lock();
         ft_access_lock();
         struct ft_entry *fte = st_find_frame_for_upage(upage, file);
         if (fte)
         {
-          printf("can find sharable frame!\n");
-          bool success = install_page(upage, fte->kernel_page, writable);
-          struct owner *owner = (struct owner *) malloc(sizeof(struct owner));
-          if (!owner)
-          {
-              printf("Cannot alloc frame page owner!\n");
-              return NULL; 
-          }
-          owner->process = thread_current();
-          list_push_back(&(fte->owners), &owner->owner_elem);
-          st_access_unlock();
           ft_access_unlock();
-          return true;
+          return share_page(upage, fte, writable);
         }else {
           printf("cannot find sharable frame!\n");
         }
-        st_access_unlock();
         ft_access_unlock();
       }
       /* *********** SHARING DONE *********** */
@@ -207,29 +194,15 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
    if (!entry->writable)
       {
         ft_access_lock();
-        st_access_lock();
         struct ft_entry *fte = st_find_frame_for_upage(entry->upage, entry->file);
         if (fte)
         {
-          printf("can find sharable frame!\n");
-          bool success = install_page(entry->upage, fte->kernel_page, entry->writable);
-          struct owner *owner = (struct owner *) malloc(sizeof(struct owner));
-          if (!owner)
-          {
-              printf("Cannot alloc frame page owner!\n");
-              return NULL; 
-          }
-          owner->process = thread_current();
-          list_push_back(&(fte->owners), &owner->owner_elem);
-          printf("thread tid %d piggybacking on %p\n", thread_current()->tid, entry->upage);
           ft_access_unlock();
-          st_access_unlock();
-          return true;
+          return share_page(fault_page, fte, entry->writable);
         }else {
           printf("cannot find sharable frame!\n");
         }
         ft_access_unlock();
-        st_access_unlock();
       }
       /* *********** SHARING DONE *********** */
 
