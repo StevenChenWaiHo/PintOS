@@ -130,7 +130,7 @@ share_page(void *upage, struct ft_entry *fte, bool writable) {
   ASSERT(fte != NULL);
   ASSERT(upage != NULL);
   ASSERT(!writable);
-  bool success = install_page(upage, fte->kernel_page, writable);
+  bool success = install_page(upage, fte->kpage, writable);
   struct owner *owner = (struct owner *) malloc(sizeof(struct owner));
   if (!owner)
   {

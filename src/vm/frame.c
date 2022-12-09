@@ -54,74 +54,6 @@ ft_access_unlock(void)
   lock_release(&ft_lock);
 }
 
-/* Adds ENTRY to ft. */
-void
-ft_add_page_entry(struct ft_entry *entry)
-{
-  hash_insert(&ft, &entry->ft_elem);
-}
-
-/* Searches for the ft_entry of UPAGE. */
-struct ft_entry *
-ft_search_entry(void *upage)
-{
-  struct ft_entry dummy;
-  dummy.upage = upage;
-  struct hash_elem *e = hash_find(&ft, &dummy.ft_elem);
-  if (!e)
-  {
-    return NULL;
-  }
-  return hash_entry(e, struct ft_entry, ft_elem);
-}
-
-/* Removes ft_entry of UPAGE from ft and frees it. */
-void
-free_frame(void *upage)
-{
-  struct ft_entry *entry = ft_search_entry(upage);
-  if (entry == NULL)
-  {
-    printf ("Cannot allocate entry\n");
-    return;
-  }
-  hash_delete(&ft, &entry->ft_elem);
-  palloc_free_page(entry->kpage);
-  free(entry);
-}
-
-/* Hash function: entry hashed by the upage address */
-static unsigned int
-ft_entry_hash(const struct hash_elem *a, void *aux UNUSED)
-{
-  const struct ft_entry *e = hash_entry(a, struct ft_entry, ft_elem);
-  return hash_bytes(&e->upage, sizeof(e->upage));
-}
-
-/* Compares the upages in A and B. */
-static bool
-ft_entry_comp(const struct hash_elem *a, const struct hash_elem *b, void *aux UNUSED)
-{
-  void *a_address = hash_entry(a, struct ft_entry, ft_elem)->upage;
-  void *b_address = hash_entry(b, struct ft_entry, ft_elem)->upage;
-  return a_address < b_address;
-}
-
-/* Remove second chance entries of this exiting thread. */
-void
-ft_free (struct thread *t) {
-  if (!list_empty (&snd_chance)) {
-    struct list_elem *e = list_front (&snd_chance);
-    while (e != list_end (&snd_chance)) {
-      struct ft_entry *snd_entry = list_entry (e, struct ft_entry, ele_elem);
-      e = list_next (e);
-      if (snd_entry->t == t) {
-        list_remove (&snd_entry->ele_elem);
-      }
-    }
-  }
-}
-
 /* Evicts a filesys page. */
 void
 evict_filesys(void *kpage, struct spt_entry *entry, uint32_t *pd)
@@ -278,6 +210,7 @@ ft_search_frame_with_owner(struct thread *t)
     return NULL;
 }
 
+/* Remove second chance entries of this exiting thread. */
 void
 ft_free (struct thread *t) {
   if (!list_empty (&snd_chance)) {
@@ -302,7 +235,7 @@ void free_frame(void *upage)
     return;
   }
   hash_delete(&ft, &entry->ft_elem);
-  palloc_free_page(entry->kernel_page);
+  palloc_free_page(entry->kpage);
   free(entry);
 }
 
