@@ -11,8 +11,6 @@
 #include "devices/swap.h"
 #include "userprog/syscall.h"
 
-#include "filesys/file.h"
-
 /* EVICT: Declare snd_chance list and its pointer. */
 static struct list snd_chance;
 
@@ -21,10 +19,10 @@ struct lock ft_lock;
 
 static bool ft_entry_comp(const struct hash_elem *, const struct hash_elem *, void *UNUSED);
 static unsigned int ft_entry_hash(const struct hash_elem *, void *UNUSED);
-void swap_page(void *kpage, struct spt_entry *entry, uint32_t *pd);
-void evict_filesys(void *kpage, struct spt_entry *entry, uint32_t *pd);
-void evict_mmap(void *kpage, struct spt_entry *entry, uint32_t *pd);
-void evict_stack(void *kpage, struct spt_entry *entry, uint32_t *pd);
+void swap_page(void *upage, struct spt_entry *entry, uint32_t *pd);
+void evict_filesys(void *upage, struct spt_entry *entry, uint32_t *pd);
+void evict_mmap(struct spt_entry *entry, uint32_t *pd);
+void evict_stack(void *upage, struct spt_entry *entry, uint32_t *pd);
 
 void ft_init(void)
 {
@@ -84,14 +82,10 @@ void evict_filesys(void *kpage, struct spt_entry *entry, uint32_t *pd)
 }
 
 /* Function for eviction a mmap page. */
-void evict_mmap(void *kpage, struct spt_entry *entry, uint32_t *pd)
+void evict_mmap(struct spt_entry *entry, uint32_t *pd)
 {
   filesys_lock ();
-  if (entry->writable && pagedir_is_dirty (pd, entry->upage)) {
-    printf("%d bytes written to file %p\n", 
-      file_write_at (entry->file, kpage, entry->rbytes, entry->ofs), entry->file);
-    pagedir_clear_page (pd, entry->upage);
-  }
+  mm_file_write(entry->file, entry->rbytes, entry->upage, entry->ofs, pd);
   filesys_unlock ();
 }
 
@@ -144,12 +138,7 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
 
           case MMAP:
             //printf("Evicting mmap page.\n");
-            printf("User page requesting is %p, tid : %d\n", user_page, thread_current ()->tid);
-            printf("Evicting mmap page of %p, tid: %d  \n", cur_ft->upage, cur_ft->t->tid);
-            if (cur_ft->upage = 0x10000000) {
-              printf("present? %p   ", pagedir_get_page (cur_ft->t->pagedir, cur_ft->upage));
-            }
-            evict_mmap(cur_ft->kernel_page, cur_spt, cur_ft->t->pagedir);
+            evict_mmap(cur_spt, cur_ft->t->pagedir);
             break;
 
           case STACK:
@@ -177,7 +166,7 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
   struct ft_entry *entry = (struct ft_entry *)malloc(sizeof(struct ft_entry));
   if (!entry)
   {
-    printf("Cannot alloc frame table entry!\n");
+    // printf("Cannot alloc frame table entry!\n");
     ft_access_unlock();
     return NULL;
   }
@@ -199,9 +188,9 @@ get_frame(enum palloc_flags flag, void *user_page, struct file *file)
   list_push_back(&entry->owners, &owner->owner_elem);
   */
   list_push_back(&snd_chance, &entry->ele_elem);
+  
   hash_insert(&ft, &entry->ft_elem);
   ft_access_unlock();
-  printf("kpage = %p\n", kernel_page);
   //printf("Frame of vmaddr: %p allocated\n", user_page);
   return kernel_page;
 }

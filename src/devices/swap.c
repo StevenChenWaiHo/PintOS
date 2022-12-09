@@ -25,7 +25,7 @@ swap_init (void)
   // locate the swap block allocated to the kernel
   swap_device = block_get_role (BLOCK_SWAP);
   if (swap_device == NULL) {
-      printf ("no swap device--swap disabled\n");
+      // printf ("no swap device--swap disabled\n");
       swap_bitmap = bitmap_create (0);
   } else {
     // create a bitmap with 1 slot per page-sized chunk of memory on the swap block

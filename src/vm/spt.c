@@ -52,7 +52,7 @@ spt_insert (struct spt_entry *entry) {
   entry->upage = pg_round_down (entry->upage);
   struct hash_elem *e = hash_replace (cur_spt(), &entry->spt_elem);
   if (e) {
-    printf("replaced sth???");
+    // printf("replaced sth???");
     struct spt_entry *replaced = hash_entry (e, struct spt_entry, spt_elem);
     free (replaced);
   }
@@ -201,28 +201,28 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
   if (!entry) {
     /* Check if needs stack growth. */ 
     if (esp == NULL) {
-      printf("1");
+      // printf("1");
       return false;
     }
     if (fault_addr == NULL || is_kernel_vaddr (fault_addr)
       || is_below_ustack (fault_addr) || esp - fault_addr > STACK_OFS
       || (PHYS_BASE - (int) fault_page) > STACK_MAX) { 
-      printf("Tid : %d, fault_addr = %p\n", thread_current ()->tid, fault_addr);
+      // printf("Tid : %d, fault_addr = %p\n", thread_current ()->tid, fault_addr);
       return false;
     }
     return grow_stack (fault_page);
   } else {
     /* Write to read-only page. */
     if ((write && !entry->writable)) {
-      printf("3");
+      // printf("3");
       return false;
     } 
     /* Allocate frame if frame not previously allocated. */
     void *frame_pt = get_frame (PAL_USER, entry->upage, entry->file);
 
-      printf("kpage = %p\n", frame_pt);
+      // printf("kpage = %p\n", frame_pt);
     if (frame_pt == NULL) {
-      printf("4");
+      // printf("4");
       return false;
     } else {
 
@@ -231,13 +231,13 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
         //Takes information in swap disk thru swap_in
         swap_in(frame_pt, entry->swap_slot);
         entry->swapped = false;
-        printf("Tid :%d, Swapping in page at %p, w? %d\n", thread_current()->tid, fault_page, entry->writable);
+        // printf("Tid :%d, Swapping in page at %p, w? %d\n", thread_current()->tid, fault_page, entry->writable);
         if (!install_page (fault_page, frame_pt, entry->writable)) {
-          printf("5");
+          // printf("5");
           return false;
         }
         if (fault_page == 0xbffff000) {
-          printf("pagedir have %p for page 0xbffff000 after swap \n", pagedir_get_page (thread_current ()->pagedir, fault_page));
+          // printf("pagedir have %p for page 0xbffff000 after swap \n", pagedir_get_page (thread_current ()->pagedir, fault_page));
         }
         pagedir_set_dirty(thread_current()->pagedir, fault_page, true);
         return;
@@ -250,7 +250,7 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
         if (entry->zbytes == PGSIZE) {
           zero_from (frame_pt, PGSIZE);
         } else if (!read_segment_from_file (entry, frame_pt)) {
-          printf("6");
+          // printf("6");
           return false;
         }
         /**
@@ -260,7 +260,7 @@ spt_pf_handler (void *fault_addr, bool not_present, bool write, bool user, void 
          * ^ This can be done by install_page() 
          **/
         if (!install_page (fault_page, frame_pt, entry->writable)) {
-          printf("7");
+          // printf("7");
           return false;
         }
         
