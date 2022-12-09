@@ -225,7 +225,6 @@ thread_create (const char *name, int priority,
     list_init (&t->fd_ref);
     t->curr_fd = 2;
   #endif
-  // printf("Thread %d created.\n", t->tid);
   return tid;
 }
 

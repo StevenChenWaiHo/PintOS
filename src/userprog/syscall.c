@@ -288,15 +288,6 @@ read (uint32_t *args, uint32_t *eax) {
   int fd = args[0];
   void *buffer = args[1];
   off_t size = args[2];
-  /*
-  printf("%x", buffer);
-  struct spt_entry *entry = spt_lookup (buffer);
-  
-  if (!entry) 
-    printf("a\n\n\n\n\n\n");
-  else
-    printf("location: %d, writable: %d\n", entry->location, entry->writable);
-  */
 
   valid_buffer (buffer, size, true);
 
@@ -395,24 +386,22 @@ void
 mmap (uint32_t *args, uint32_t *eax) {
   int fd = args[0];
   void *addr = (void *) args[1];
-  //printf("mmaping at %p\n", addr);
-  /* Checking for fd, addr fails. */
+  /* Checking fd and addr. */
   if (fd >= 2 && addr != 0 && pg_ofs (addr) == 0
     && (PHYS_BASE - (int) addr) > STACK_MAX) {
     struct file *fp = fd_search (fd);
     if (fp) {
-      //Needs to renew thru reopen for unix convention of closing files
+      /* Renews fp using reopen to follow UNIX convention of closing files. */
       filesys_lock ();
       fp = file_reopen (fp);
       int read_bytes = file_length (fp);
       filesys_unlock ();
-      /* Checking for file size, overlapping pages fails.*/
+      /* Checking for file size, overlapping pages fail. */
       if (read_bytes > 0 && mmap_available (addr, read_bytes)) {
         int zero_bytes = (read_bytes % PGSIZE == 0) ? 
           0 : PGSIZE - (read_bytes % PGSIZE);
 
-        //Do we assume writable is true here and leave blocking writes to
-        //executable file for deny-writed calls to file_write?
+        /* Assume writable is true. */
         lazy_load (fp, 0, addr, read_bytes, zero_bytes, true, MMAP);
 
         /* Insert MMAP pair into MM_REF,
@@ -437,7 +426,6 @@ mmap (uint32_t *args, uint32_t *eax) {
 
 void mm_file_write(struct file *file, int size, void *upage, off_t ofs, uint32_t *pd) 
 {
-  // ASSERT (pagedir_get_page (pd, upage));
   if (pagedir_is_dirty (pd, upage)) {
       if (size < PGSIZE) {
         file_write_at (file, upage, size, ofs);
@@ -451,7 +439,6 @@ void mm_file_write(struct file *file, int size, void *upage, off_t ofs, uint32_t
 /* Helper function to destroy MMAP pair when closing a file. */
 void
 mm_destroy (struct file_record *e) {
-  //Some munmap stuff here
   filesys_lock ();
   int size = file_length (e->file_ref);
   void *upage = e->mapping_addr;

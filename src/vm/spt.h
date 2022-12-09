@@ -46,4 +46,4 @@ bool spt_pf_handler (void *, bool, bool, bool, void *);
 
 void insert_stack_entry (void *);
 
-#endif
+#endif /* vm/spt.h */

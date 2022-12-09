@@ -32,4 +32,4 @@ void free_frame(void *);
 void ft_free (struct thread *);
 void *get_frame(enum palloc_flags, void *, struct file*);
 
-#endif
+#endif /* vm/frame.h */
