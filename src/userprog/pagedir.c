@@ -5,6 +5,7 @@
 #include "threads/init.h"
 #include "threads/pte.h"
 #include "threads/palloc.h"
+#include "vm/frame.h"
 
 static uint32_t *active_pd (void);
 static void invalidate_pagedir (uint32_t *);
@@ -27,6 +28,7 @@ pagedir_create (void)
 void
 pagedir_destroy (uint32_t *pd) 
 {
+  // ft_access_lock ();
   uint32_t *pde;
 
   if (pd == NULL)
@@ -45,6 +47,7 @@ pagedir_destroy (uint32_t *pd)
         palloc_free_page (pt);
       }
   palloc_free_page (pd);
+  // ft_access_unlock ();
 }
 
 /* Returns the address of the page table entry for virtual
