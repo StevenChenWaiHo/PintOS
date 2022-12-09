@@ -5,6 +5,7 @@
 #include "filesys/file.h"
 #include "threads/interrupt.h"
 #include "threads/malloc.h"
+#include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "pagedir.h"
@@ -447,8 +448,10 @@ mm_destroy (struct file_record *e) {
   /* Iterating through all pages, checking dirty state and writing any dirty ones
     if this is the last page and is not full, trims the current upage content.*/
   while (size > 0) {
+    void *kpage = pagedir_get_page (thread_current()->pagedir, upage);
     mm_file_write(e->file_ref, size, upage, upage - e->mapping_addr, thread_current ()->pagedir);
-    spt_remove(upage);
+    spt_remove (upage);
+    palloc_free_page (kpage);
     upage += PGSIZE;
     size -= PGSIZE;
   }
